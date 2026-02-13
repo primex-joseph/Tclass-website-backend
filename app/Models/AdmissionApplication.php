@@ -1,0 +1,49 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class AdmissionApplication extends Model
+{
+    protected $fillable = [
+        'full_name',
+        'age',
+        'gender',
+        'primary_course',
+        'secondary_course',
+        'email',
+        'facebook_account',
+        'contact_no',
+        'form_data',
+        'id_picture_path',
+        'one_by_one_picture_path',
+        'right_thumbmark_path',
+        'status',
+        'remarks',
+        'approved_at',
+        'rejected_at',
+        'processed_by',
+        'created_user_id',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'approved_at' => 'datetime',
+            'rejected_at' => 'datetime',
+            'form_data' => 'array',
+        ];
+    }
+
+    public function processor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'processed_by');
+    }
+
+    public function createdUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_user_id');
+    }
+}
