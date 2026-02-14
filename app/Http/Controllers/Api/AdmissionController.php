@@ -51,12 +51,16 @@ class AdmissionController extends Controller
             'primary_course' => ['nullable', 'string', 'max:255'],
             'secondary_course' => ['nullable', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
+            'application_type' => ['nullable', 'in:admission,vocational'],
+            'valid_id_type' => ['nullable', 'string', 'max:120'],
             'facebook_account' => ['nullable', 'string', 'max:255'],
             'contact_no' => ['nullable', 'string', 'max:50'],
             'form_data' => ['nullable'],
             'id_picture' => ['nullable', 'image', 'max:4096'],
             'one_by_one_picture' => ['nullable', 'image', 'max:4096'],
             'right_thumbmark' => ['nullable', 'image', 'max:4096'],
+            'birth_certificate' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
+            'valid_id_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
         ]);
 
         $rawFormData = $validated['form_data'] ?? [];
@@ -95,7 +99,21 @@ class AdmissionController extends Controller
         $secondaryCourse = $validated['secondary_course'] ?? data_get($formData, 'scholarshipType');
         $facebookAccount = $validated['facebook_account'] ?? data_get($formData, 'facebookAccount');
         $contactNo = $validated['contact_no'] ?? data_get($formData, 'contactNo');
+        $applicationType = $validated['application_type'] ?? 'admission';
+        $validIdType = $validated['valid_id_type'] ?? data_get($formData, 'validIdType');
         $normalizedEmail = Str::lower($validated['email']);
+
+        if ($applicationType === 'vocational') {
+            if (! $request->hasFile('birth_certificate')) {
+                return response()->json(['message' => 'Birth certificate upload is required.'], 422);
+            }
+            if (trim((string) $validIdType) === '') {
+                return response()->json(['message' => 'Valid ID type is required.'], 422);
+            }
+            if (! $request->hasFile('valid_id_image')) {
+                return response()->json(['message' => 'Valid ID upload is required.'], 422);
+            }
+        }
 
         $existsPending = AdmissionApplication::query()
             ->where('email', $normalizedEmail)
@@ -115,6 +133,8 @@ class AdmissionController extends Controller
             'primary_course' => $primaryCourse,
             'secondary_course' => $secondaryCourse,
             'email' => $normalizedEmail,
+            'application_type' => $applicationType,
+            'valid_id_type' => $validIdType,
             'facebook_account' => $facebookAccount,
             'contact_no' => $contactNo,
             'form_data' => $formData,
@@ -126,6 +146,12 @@ class AdmissionController extends Controller
                 : null,
             'right_thumbmark_path' => $request->hasFile('right_thumbmark')
                 ? $request->file('right_thumbmark')->store('admissions/thumbmarks', 'public')
+                : null,
+            'birth_certificate_path' => $request->hasFile('birth_certificate')
+                ? $request->file('birth_certificate')->store('admissions/birth-certificates', 'public')
+                : null,
+            'valid_id_path' => $request->hasFile('valid_id_image')
+                ? $request->file('valid_id_image')->store('admissions/valid-ids', 'public')
                 : null,
             'status' => 'pending',
         ]);
