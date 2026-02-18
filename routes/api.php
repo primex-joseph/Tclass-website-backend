@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminEnrollmentController;
 use App\Http\Controllers\Api\AdmissionController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\StudentEnrollmentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,7 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::post('/admission/submit', [AdmissionController::class, 'submit']);
+Route::post('/contact/submit', [ContactController::class, 'submit']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('student')->group(function () {
@@ -33,6 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('admin')->group(function () {
+        Route::get('/users', [AdmissionController::class, 'users']);
+        Route::get('/dashboard-stats', [AdmissionController::class, 'dashboardStats']);
         Route::get('/enrollments', [AdminEnrollmentController::class, 'index']);
         Route::patch('/enrollments/{enrollmentId}', [AdminEnrollmentController::class, 'updateStatus']);
         Route::patch('/enrollment-periods/{periodId}/activate', [AdminEnrollmentController::class, 'activatePeriod']);

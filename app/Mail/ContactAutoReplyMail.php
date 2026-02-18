@@ -9,14 +9,12 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class AdmissionApprovedMail extends Mailable
+class ContactAutoReplyMail extends Mailable
 {
     use Queueable, SerializesModels;
 
     public function __construct(
-        public string $fullName,
-        public string $studentNumber,
-        public string $temporaryPassword,
+        public string $firstName
     ) {
     }
 
@@ -27,19 +25,22 @@ class AdmissionApprovedMail extends Mailable
                 address: (string) config('mail.from.address'),
                 name: 'Tarlac Center for Learning and Skills Success'
             ),
-            subject: 'Admission Approved - Tarlac Center for Learning and Skills Success',
+            subject: 'We received your message - Tarlac Center for Learning and Skills Success'
         );
     }
 
     public function content(): Content
     {
         return new Content(
-            view: 'emails.admission-approved',
+            view: 'emails.contact-auto-reply',
             with: [
-                'fullName' => $this->fullName,
-                'studentNumber' => $this->studentNumber,
-                'temporaryPassword' => $this->temporaryPassword,
-            ],
+                'firstName' => $this->firstName,
+            ]
         );
+    }
+
+    public function attachments(): array
+    {
+        return [];
     }
 }

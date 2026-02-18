@@ -177,6 +177,80 @@ class AdmissionController extends Controller
         ]);
     }
 
+    public function users(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $role = strtolower((string) $request->query('role', 'student'));
+        $allowedRoles = ['student', 'faculty', 'admin'];
+        if (! in_array($role, $allowedRoles, true)) {
+            return response()->json(['message' => 'Invalid role filter.'], 422);
+        }
+
+        $rows = DB::table('users')
+            ->join('portal_user_roles', function ($join) use ($role) {
+                $join->on('portal_user_roles.user_id', '=', 'users.id')
+                    ->where('portal_user_roles.role', '=', $role)
+                    ->where('portal_user_roles.is_active', '=', 1);
+            })
+            ->select([
+                'users.id',
+                'users.name',
+                'users.email',
+                'users.student_number',
+                'users.created_at',
+                DB::raw("'" . $role . "' as role"),
+                DB::raw("'active' as status"),
+            ])
+            ->orderByDesc('users.id')
+            ->get();
+
+        return response()->json([
+            'users' => $rows,
+        ]);
+    }
+
+    public function dashboardStats(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $students = DB::table('portal_user_roles')
+            ->where('role', 'student')
+            ->where('is_active', 1)
+            ->count();
+
+        $faculty = DB::table('portal_user_roles')
+            ->where('role', 'faculty')
+            ->where('is_active', 1)
+            ->count();
+
+        $classes = DB::table('courses')
+            ->where('is_active', 1)
+            ->count();
+
+        $departmentCodes = DB::table('courses')
+            ->pluck('code')
+            ->map(function ($code) {
+                $value = strtoupper((string) $code);
+                $prefix = preg_replace('/[^A-Z].*$/', '', $value);
+                return $prefix !== '' ? $prefix : $value;
+            })
+            ->filter()
+            ->unique()
+            ->count();
+
+        return response()->json([
+            'students' => $students,
+            'faculty' => $faculty,
+            'classes' => $classes,
+            'departments' => $departmentCodes,
+        ]);
+    }
+
     public function approve(Request $request, int $id): JsonResponse
     {
         if ($resp = $this->assertAdmin($request)) {

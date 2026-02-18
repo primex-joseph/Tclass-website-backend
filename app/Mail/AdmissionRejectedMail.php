@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 
@@ -16,7 +17,11 @@ class AdmissionRejectedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'TCLASS Admission Update - Application Rejected',
+            from: new Address(
+                address: (string) config('mail.from.address'),
+                name: 'Tarlac Center for Learning and Skills Success'
+            ),
+            subject: 'Admission Update - Tarlac Center for Learning and Skills Success',
         );
     }
 
