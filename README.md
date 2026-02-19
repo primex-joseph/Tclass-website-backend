@@ -71,3 +71,62 @@ Quick run:
 powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -Seed -Serve
 ```
 
+## PHP Extensions (Required)
+
+For this backend (`php ^8.2`, Laravel 12), make sure these PHP extensions are enabled:
+
+- `bcmath`
+- `ctype`
+- `curl`
+- `dom`
+- `fileinfo`
+- `json`
+- `mbstring`
+- `openssl`
+- `pdo`
+- `pdo_mysql`
+- `tokenizer`
+- `xml`
+
+Recommended in dev:
+
+- `zip`
+- `intl`
+- `gd`
+
+### How to Enable Extensions (XAMPP / Windows)
+
+1. Open your active `php.ini` (usually `C:\xampp\php\php.ini`).
+2. Find each extension line and remove leading `;`.
+3. Ensure lines like these are enabled:
+
+```ini
+extension=bcmath
+extension=curl
+extension=fileinfo
+extension=mbstring
+extension=openssl
+extension=pdo_mysql
+extension=xml
+extension=zip
+```
+
+4. Save `php.ini`.
+5. Restart Apache (and PHP service if applicable).
+6. Verify loaded extensions:
+
+```powershell
+php --ini
+php -m
+```
+
+### Quick Check for Missing Extensions
+
+Run this in backend root:
+
+```powershell
+composer check-platform-reqs
+```
+
+If anything is missing, enable it in `php.ini`, restart Apache/PHP, then rerun the command.
+
