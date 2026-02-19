@@ -71,6 +71,12 @@ Quick run:
 powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -Seed -Serve
 ```
 
+XAMPP default quick run (root/no password + auto DB create):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -Serve
+```
+
 ## PHP Extensions (Required)
 
 For this backend (`php ^8.2`, Laravel 12), make sure these PHP extensions are enabled:
@@ -129,4 +135,3 @@ composer check-platform-reqs
 ```
 
 If anything is missing, enable it in `php.ini`, restart Apache/PHP, then rerun the command.
-
