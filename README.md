@@ -57,3 +57,17 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Project Bootstrap (Fresh PC)
+
+For a new teammate machine, use the backend bootstrap script:
+
+- Script: `scripts/laravel-fresh-start.ps1`
+- Guide: `docs/BACKEND_FRESH_START.md`
+
+Quick run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -Seed -Serve
+```
+
