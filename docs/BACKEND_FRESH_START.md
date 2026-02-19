@@ -18,7 +18,8 @@ This backend repo includes a one-command bootstrap script for a new teammate PC.
 8. Runs `php artisan storage:link`
 9. Clears caches (`optimize:clear`, `config:clear`, `cache:clear`)
 10. Runs `php artisan migrate:fresh` (optional seed)
-11. Optionally starts `php artisan serve`
+11. Optionally creates admin user (`scripts/create-admin-user.ps1`)
+12. Optionally starts `php artisan serve`
 
 ## Usage
 
@@ -41,6 +42,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -Seed
 - `-DbPort 3306` : DB port (default: `3306`)
 - `-RootDbUser root` : MySQL admin/root user used for CREATE DATABASE
 - `-RootDbPassword ""` : MySQL admin/root password
+- `-CreateAdmin` : run admin creation step after migrations
+- `-AdminName "Admin User"` : admin full name (optional; prompts if missing)
+- `-AdminEmail "admin@tclass.local"` : admin email (optional; prompts if missing)
+- `-AdminPassword "Admin@12345"` : admin password (optional; prompts if missing)
+- `-ForceAdminPasswordUpdate` : force-update password if admin already exists
 
 ## Examples
 
@@ -54,6 +60,18 @@ XAMPP default (root, no password), explicit DB name:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -Serve
+```
+
+One-time fresh setup + interactive admin creation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -Serve
+```
+
+One-time fresh setup + non-interactive admin creation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -AdminName "Admin User" -AdminEmail "admin@tclass.local" -AdminPassword "Admin@12345" -Serve
 ```
 
 Fresh migration only (keep current `.env`):

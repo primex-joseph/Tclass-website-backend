@@ -77,6 +77,18 @@ XAMPP default quick run (root/no password + auto DB create):
 powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -Serve
 ```
 
+One-time fresh setup + admin creation (interactive):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -Serve
+```
+
+One-time fresh setup + admin creation (non-interactive):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -AdminName "Admin User" -AdminEmail "admin@tclass.local" -AdminPassword "Admin@12345" -Serve
+```
+
 ## Create Admin User (Interactive Script)
 
 For testing or teammate onboarding, use:

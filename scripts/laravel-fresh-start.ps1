@@ -1,6 +1,7 @@
 param(
   [switch]$Seed,
   [switch]$Serve,
+  [switch]$CreateAdmin,
   [switch]$ForceEnvCopy,
   [string]$DatabaseName = "tclass_db",
   [string]$DbHost = "127.0.0.1",
@@ -9,6 +10,10 @@ param(
   [string]$DbPassword = "",
   [string]$RootDbUser = "root",
   [string]$RootDbPassword = "",
+  [string]$AdminName,
+  [string]$AdminEmail,
+  [string]$AdminPassword,
+  [switch]$ForceAdminPasswordUpdate,
   [int]$Port = 8000
 )
 
@@ -118,6 +123,25 @@ if ($Seed) {
   php artisan migrate:fresh --seed --force
 } else {
   php artisan migrate:fresh --force
+}
+
+if ($CreateAdmin) {
+  Step "Creating admin user"
+  $adminScriptPath = Join-Path (Get-Location).Path "scripts\create-admin-user.ps1"
+  if (-not (Test-Path $adminScriptPath)) {
+    throw "Missing script: $adminScriptPath"
+  }
+
+  $adminArgs = @("-ExecutionPolicy", "Bypass", "-File", $adminScriptPath)
+  if ($AdminName) { $adminArgs += @("-Name", $AdminName) }
+  if ($AdminEmail) { $adminArgs += @("-Email", $AdminEmail) }
+  if ($AdminPassword) { $adminArgs += @("-Password", $AdminPassword) }
+  if ($ForceAdminPasswordUpdate) { $adminArgs += "-ForceUpdatePassword" }
+
+  & powershell @adminArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Admin creation step failed."
+  }
 }
 
 Step "Done"
