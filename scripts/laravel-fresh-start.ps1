@@ -107,22 +107,39 @@ Step "Generating app key"
 php artisan key:generate --force
 
 Step "Creating storage symlink (if needed)"
-try {
-  php artisan storage:link
-} catch {
-  Warn "storage:link skipped/failed (may already exist)."
+$storageLink = "public\storage"
+if (Test-Path $storageLink) {
+  Warn "storage link already exists. Skipping storage:link."
+} else {
+  try {
+    php artisan storage:link
+  } catch {
+    Warn "storage:link skipped/failed."
+  }
 }
-
-Step "Clearing caches"
-php artisan optimize:clear
-php artisan config:clear
-php artisan cache:clear
 
 Step "Running fresh migrations"
 if ($Seed) {
   php artisan migrate:fresh --seed --force
 } else {
   php artisan migrate:fresh --force
+}
+
+Step "Clearing caches"
+try {
+  php artisan optimize:clear
+} catch {
+  Warn "optimize:clear failed; continuing."
+}
+try {
+  php artisan config:clear
+} catch {
+  Warn "config:clear failed; continuing."
+}
+try {
+  php artisan cache:clear
+} catch {
+  Warn "cache:clear failed; continuing."
 }
 
 if ($CreateAdmin) {
