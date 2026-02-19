@@ -34,9 +34,11 @@ Step "Creating/updating admin user"
 
 $phpScript = @"
 <?php
-require __DIR__ . '/vendor/autoload.php';
+`$basePath = getenv('ADMIN_BASE_PATH') ?: getcwd();
+`$basePath = rtrim(`$basePath, "\\/");
+require `$basePath . '/vendor/autoload.php';
 
-`$app = require __DIR__ . '/bootstrap/app.php';
+`$app = require `$basePath . '/bootstrap/app.php';
 `$kernel = `$app->make(Illuminate\Contracts\Console\Kernel::class);
 `$kernel->bootstrap();
 
@@ -117,6 +119,7 @@ $env:ADMIN_NAME = $Name
 $env:ADMIN_EMAIL = $Email
 $env:ADMIN_PASSWORD = $Password
 $env:ADMIN_FORCE_PASSWORD = $(if ($ForceUpdatePassword) { "1" } else { "0" })
+$env:ADMIN_BASE_PATH = (Get-Location).Path
 
 try {
   $result = php $tmpPath
@@ -130,4 +133,5 @@ finally {
   Remove-Item Env:ADMIN_EMAIL -ErrorAction SilentlyContinue
   Remove-Item Env:ADMIN_PASSWORD -ErrorAction SilentlyContinue
   Remove-Item Env:ADMIN_FORCE_PASSWORD -ErrorAction SilentlyContinue
+  Remove-Item Env:ADMIN_BASE_PATH -ErrorAction SilentlyContinue
 }
