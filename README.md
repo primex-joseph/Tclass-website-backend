@@ -77,6 +77,42 @@ XAMPP default quick run (root/no password + auto DB create):
 powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -Serve
 ```
 
+## Create Admin User (Interactive Script)
+
+For testing or teammate onboarding, use:
+
+- Script: `scripts/create-admin-user.ps1`
+
+### Interactive mode
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1
+```
+
+This will prompt for:
+
+- Admin full name
+- Admin email
+- Admin password
+
+### Non-interactive mode
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1 -Name "Admin User" -Email "admin@tclass.local" -Password "Admin@12345"
+```
+
+### Update existing admin password
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1 -Name \"Admin User\" -Email \"admin@tclass.local\" -Password \"NewStrongPass@123\" -ForceUpdatePassword
+```
+
+### Notes
+
+- Script creates user if missing; updates name if existing.
+- If `portal_user_roles` exists, it sets role `admin` with `is_active=1`.
+- If Spatie roles are enabled, it also assigns `admin` role on `web` guard.
+
 ## PHP Extensions (Required)
 
 For this backend (`php ^8.2`, Laravel 12), make sure these PHP extensions are enabled:
