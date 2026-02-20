@@ -55,6 +55,9 @@ class AdmissionController extends Controller
             'valid_id_type' => ['nullable', 'string', 'max:120'],
             'facebook_account' => ['nullable', 'string', 'max:255'],
             'contact_no' => ['nullable', 'string', 'max:50'],
+            'enrollment_purposes' => ['nullable', 'array'],
+            'enrollment_purposes.*' => ['nullable', 'string', 'max:120'],
+            'enrollment_purpose_others' => ['nullable', 'string', 'max:255'],
             'form_data' => ['nullable'],
             'id_picture' => ['nullable', 'image', 'max:4096'],
             'one_by_one_picture' => ['nullable', 'image', 'max:4096'],
@@ -101,6 +104,18 @@ class AdmissionController extends Controller
         $contactNo = $validated['contact_no'] ?? data_get($formData, 'contactNo');
         $applicationType = $validated['application_type'] ?? 'admission';
         $validIdType = $validated['valid_id_type'] ?? data_get($formData, 'validIdType');
+        $purposesFromPayload = $validated['enrollment_purposes'] ?? data_get($formData, 'enrollmentPurposes', []);
+        if (is_string($purposesFromPayload)) {
+            $decodedPurposes = json_decode($purposesFromPayload, true);
+            $purposesFromPayload = is_array($decodedPurposes) ? $decodedPurposes : [];
+        }
+        $enrollmentPurposes = collect(is_array($purposesFromPayload) ? $purposesFromPayload : [])
+            ->filter(fn ($item) => is_string($item) && trim($item) !== '')
+            ->map(fn ($item) => trim($item))
+            ->unique()
+            ->values()
+            ->all();
+        $enrollmentPurposeOthers = trim((string) ($validated['enrollment_purpose_others'] ?? data_get($formData, 'enrollmentPurposeOthers', '')));
         $normalizedEmail = Str::lower($validated['email']);
 
         if ($applicationType === 'vocational') {
@@ -113,6 +128,16 @@ class AdmissionController extends Controller
             if (! $request->hasFile('valid_id_image')) {
                 return response()->json(['message' => 'Valid ID upload is required.'], 422);
             }
+            if (count($enrollmentPurposes) === 0) {
+                return response()->json(['message' => 'Please select at least one purpose/intention for enrolling.'], 422);
+            }
+        }
+
+        if (in_array('Others', $enrollmentPurposes, true) && $enrollmentPurposeOthers === '') {
+            return response()->json(['message' => 'Please specify the purpose under Others.'], 422);
+        }
+        if (! in_array('Others', $enrollmentPurposes, true)) {
+            $enrollmentPurposeOthers = null;
         }
 
         $existsPending = AdmissionApplication::query()
@@ -137,6 +162,8 @@ class AdmissionController extends Controller
             'valid_id_type' => $validIdType,
             'facebook_account' => $facebookAccount,
             'contact_no' => $contactNo,
+            'enrollment_purposes' => $enrollmentPurposes,
+            'enrollment_purpose_others' => $enrollmentPurposeOthers,
             'form_data' => $formData,
             'id_picture_path' => $request->hasFile('id_picture')
                 ? $request->file('id_picture')->store('admissions/id-pictures', 'public')

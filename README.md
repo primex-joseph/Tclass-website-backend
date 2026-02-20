@@ -1,133 +1,86 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# TClass Backend (Laravel API)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Backend API for the TClass system, supporting admissions, vocational enrollment, portal authentication, admin operations, and messaging.
 
-## About Laravel
+## Core Modules
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Authentication (`/api/auth/*`) with portal role checks (`student`, `faculty`, `admin`)
+- Admission and vocational submission workflows
+- Enrollment lifecycle endpoints for student/admin flows
+- Admin dashboard APIs (stats, users, trends data)
+- Contact form processing + admin inbox message persistence
+- Mail notifications (contact, admission approved/rejected)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Tech Stack
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- Laravel 12
+- PHP 8.2+
+- MySQL/MariaDB
+- Laravel Sanctum
+- Spatie Permission (role support where enabled)
 
-## Learning Laravel
+## Quick Start (Fresh PC)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
-
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-## Laravel Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-
-## Project Bootstrap (Fresh PC)
-
-For a new teammate machine, use the backend bootstrap script:
-
-- Script: `scripts/laravel-fresh-start.ps1`
-- Guide: `docs/BACKEND_FRESH_START.md`
-
-Quick run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -Seed -Serve
-```
-
-XAMPP default quick run (root/no password + auto DB create):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -Serve
-```
-
-One-time fresh setup + admin creation (interactive):
+Use the one-shot bootstrap script:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -Serve
 ```
 
-One-time fresh setup + admin creation (non-interactive):
+This will:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -AdminName "Admin User" -AdminEmail "admin@tclass.local" -AdminPassword "Admin@12345" -Serve
+1. Install dependencies
+2. Create/configure `.env`
+3. Create database
+4. Run `migrate:fresh --seed`
+5. Optionally create admin account
+6. Start local server
+
+Full guide: `docs/BACKEND_FRESH_START.md`
+
+## Manual Setup
+
+If you prefer manual setup, follow:
+
+- `docs/backend-setup.md`
+
+## Required Environment Keys
+
+Minimum required in `.env`:
+
+```env
+APP_URL=http://127.0.0.1:8000
+FRONTEND_URL=http://localhost:3000
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=tclass_db
+DB_USERNAME=root
+DB_PASSWORD=
+
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_ENCRYPTION=tls
+MAIL_USERNAME=your_account@gmail.com
+MAIL_PASSWORD=your_app_password
+MAIL_FROM_ADDRESS=your_account@gmail.com
+MAIL_FROM_NAME="Tarlac Center for Learning and Skills Success"
+
+CONTACT_RECEIVER_EMAIL=your_inbox@gmail.com
 ```
 
-## Create Admin User (Interactive Script)
-
-For testing or teammate onboarding, use:
-
-- Script: `scripts/create-admin-user.ps1`
-
-### Interactive mode
+After env changes:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1
+php artisan config:clear
+php artisan cache:clear
 ```
 
-This will prompt for:
+## Required PHP Extensions
 
-- Admin full name
-- Admin email
-- Admin password
-
-### Non-interactive mode
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1 -Name "Admin User" -Email "admin@tclass.local" -Password "Admin@12345"
-```
-
-### Update existing admin password
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1 -Name \"Admin User\" -Email \"admin@tclass.local\" -Password \"NewStrongPass@123\" -ForceUpdatePassword
-```
-
-### Notes
-
-- Script creates user if missing; updates name if existing.
-- If `portal_user_roles` exists, it sets role `admin` with `is_active=1`.
-- If Spatie roles are enabled, it also assigns `admin` role on `web` guard.
-
-## PHP Extensions (Required)
-
-For this backend (`php ^8.2`, Laravel 12), make sure these PHP extensions are enabled:
+Enable these extensions in `php.ini`:
 
 - `bcmath`
 - `ctype`
@@ -142,44 +95,38 @@ For this backend (`php ^8.2`, Laravel 12), make sure these PHP extensions are en
 - `tokenizer`
 - `xml`
 
-Recommended in dev:
+Recommended in dev: `zip`, `intl`, `gd`
 
-- `zip`
-- `intl`
-- `gd`
-
-### How to Enable Extensions (XAMPP / Windows)
-
-1. Open your active `php.ini` (usually `C:\xampp\php\php.ini`).
-2. Find each extension line and remove leading `;`.
-3. Ensure lines like these are enabled:
-
-```ini
-extension=bcmath
-extension=curl
-extension=fileinfo
-extension=mbstring
-extension=openssl
-extension=pdo_mysql
-extension=xml
-extension=zip
-```
-
-4. Save `php.ini`.
-5. Restart Apache (and PHP service if applicable).
-6. Verify loaded extensions:
+Verify:
 
 ```powershell
-php --ini
 php -m
-```
-
-### Quick Check for Missing Extensions
-
-Run this in backend root:
-
-```powershell
 composer check-platform-reqs
 ```
 
-If anything is missing, enable it in `php.ini`, restart Apache/PHP, then rerun the command.
+## Dev Test Accounts
+
+Seeded accounts (from `DatabaseSeeder`):
+
+- Faculty: `facultydev@tclass.local` / `Faculty123!`
+- Student: `studentdev@tclass.local` / `Student123!`
+
+Admin account can be created with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1
+```
+
+## Common Commands
+
+```powershell
+php artisan migrate
+php artisan db:seed --force
+php artisan storage:link
+php artisan serve --host=127.0.0.1 --port=8000
+```
+
+## Docs Index
+
+- `docs/backend-setup.md`
+- `docs/BACKEND_FRESH_START.md`

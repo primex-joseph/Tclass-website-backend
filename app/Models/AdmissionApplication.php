@@ -18,6 +18,8 @@ class AdmissionApplication extends Model
         'valid_id_type',
         'facebook_account',
         'contact_no',
+        'enrollment_purposes',
+        'enrollment_purpose_others',
         'form_data',
         'id_picture_path',
         'one_by_one_picture_path',
@@ -37,6 +39,7 @@ class AdmissionApplication extends Model
         return [
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',
+            'enrollment_purposes' => 'array',
             'form_data' => 'array',
         ];
     }

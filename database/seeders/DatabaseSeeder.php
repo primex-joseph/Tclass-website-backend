@@ -5,6 +5,9 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,11 +18,36 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Keep existing admin account untouched. Seed only faculty/student dev accounts.
+        $faculty = User::query()->updateOrCreate(
+            ['email' => 'facultydev@tclass.local'],
+            [
+                'name' => 'Faculty Dev',
+                'password' => Hash::make('Faculty123!'),
+                'must_change_password' => false,
+            ]
+        );
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $student = User::query()->updateOrCreate(
+            ['email' => 'studentdev@tclass.local'],
+            [
+                'name' => 'Student Dev',
+                'student_number' => '25-1-1-1001',
+                'password' => Hash::make('Student123!'),
+                'must_change_password' => false,
+            ]
+        );
+
+        if (Schema::hasTable('portal_user_roles')) {
+            DB::table('portal_user_roles')->updateOrInsert(
+                ['user_id' => $faculty->id, 'role' => 'faculty'],
+                ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+
+            DB::table('portal_user_roles')->updateOrInsert(
+                ['user_id' => $student->id, 'role' => 'student'],
+                ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+        }
     }
 }
