@@ -27,6 +27,9 @@ class AdmissionApplication extends Model
         'birth_certificate_path',
         'valid_id_path',
         'status',
+        'exam_status',
+        'exam_schedule_sent_at',
+        'exam_schedule_payload',
         'remarks',
         'approved_at',
         'rejected_at',
@@ -39,8 +42,10 @@ class AdmissionApplication extends Model
         return [
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',
+            'exam_schedule_sent_at' => 'datetime',
             'enrollment_purposes' => 'array',
             'form_data' => 'array',
+            'exam_schedule_payload' => 'array',
         ];
     }
 

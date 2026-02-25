@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Mail\AdmissionApprovedMail;
 use App\Mail\AdmissionRejectedMail;
+use App\Mail\EntranceExamScheduleMail;
 use App\Models\AdmissionApplication;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -85,8 +86,10 @@ class AdmissionController extends Controller
         }
 
         $age = $validated['age'] ?? data_get($formData, 'age');
-        if (! is_numeric($age) || (int) $age < 12 || (int) $age > 90) {
-            return response()->json(['message' => 'Age must be between 12 and 90.'], 422);
+        $applicationType = $validated['application_type'] ?? 'admission';
+        $minAge = $applicationType === 'vocational' ? 18 : 12;
+        if (! is_numeric($age) || (int) $age < $minAge || (int) $age > 90) {
+            return response()->json(['message' => "Age must be between {$minAge} and 90."], 422);
         }
 
         $gender = trim((string) ($validated['gender'] ?? data_get($formData, 'sex')));
@@ -102,7 +105,6 @@ class AdmissionController extends Controller
         $secondaryCourse = $validated['secondary_course'] ?? data_get($formData, 'scholarshipType');
         $facebookAccount = $validated['facebook_account'] ?? data_get($formData, 'facebookAccount');
         $contactNo = $validated['contact_no'] ?? data_get($formData, 'contactNo');
-        $applicationType = $validated['application_type'] ?? 'admission';
         $validIdType = $validated['valid_id_type'] ?? data_get($formData, 'validIdType');
         $purposesFromPayload = $validated['enrollment_purposes'] ?? data_get($formData, 'enrollmentPurposes', []);
         if (is_string($purposesFromPayload)) {
@@ -384,6 +386,108 @@ class AdmissionController extends Controller
 
         return response()->json([
             'message' => 'Admission application rejected.',
+        ]);
+    }
+
+    public function updateExamStatus(Request $request, int $id): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'exam_status' => ['required', 'in:passed,failed,not_attended'],
+        ]);
+
+        $application = AdmissionApplication::query()->find($id);
+        if (! $application) {
+            return response()->json(['message' => 'Application not found.'], 404);
+        }
+
+        $application->update([
+            'exam_status' => $validated['exam_status'],
+        ]);
+
+        return response()->json([
+            'message' => 'Exam status updated successfully.',
+            'application' => $application->fresh(),
+        ]);
+    }
+
+    public function sendExamSchedule(Request $request, int $id): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'subject' => ['nullable', 'string', 'max:180'],
+            'intro_message' => ['nullable', 'string', 'max:1000'],
+            'exam_date' => ['required', 'string', 'max:120'],
+            'exam_time' => ['required', 'string', 'max:120'],
+            'exam_day' => ['required', 'string', 'max:60'],
+            'location' => ['required', 'string', 'max:255'],
+            'things_to_bring' => ['required', 'string', 'max:2000'],
+            'attire_note' => ['nullable', 'string', 'max:500'],
+            'additional_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $application = AdmissionApplication::query()->find($id);
+        if (! $application) {
+            return response()->json(['message' => 'Application not found.'], 404);
+        }
+
+        if (blank($application->email)) {
+            return response()->json(['message' => 'Applicant email is missing.'], 422);
+        }
+
+        $subject = trim((string) ($validated['subject'] ?? 'Entrance Exam Schedule Invitation - TCLASS'));
+        $intro = trim((string) ($validated['intro_message'] ?? 'You have been invited to take the entrance examination for your application at TCLASS.'));
+
+        $payload = [
+            'subject' => $subject,
+            'intro_message' => $intro,
+            'exam_date' => $validated['exam_date'],
+            'exam_time' => $validated['exam_time'],
+            'exam_day' => $validated['exam_day'],
+            'location' => $validated['location'],
+            'things_to_bring' => $validated['things_to_bring'],
+            'attire_note' => $validated['attire_note'] ?? null,
+            'additional_note' => $validated['additional_note'] ?? null,
+            'sent_by' => $request->user()?->id,
+            'sent_at' => now()->toISOString(),
+        ];
+
+        try {
+            Mail::to($application->email)->send(
+                new EntranceExamScheduleMail(
+                    fullName: $application->full_name,
+                    course: (string) $application->primary_course,
+                    subjectLine: $subject,
+                    introMessage: $intro,
+                    examDate: (string) $validated['exam_date'],
+                    examTime: (string) $validated['exam_time'],
+                    examDay: (string) $validated['exam_day'],
+                    location: (string) $validated['location'],
+                    thingsToBring: (string) $validated['things_to_bring'],
+                    attireNote: $validated['attire_note'] ?? null,
+                    additionalNote: $validated['additional_note'] ?? null,
+                )
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to send exam schedule email. Check SMTP configuration.',
+            ], 500);
+        }
+
+        $application->update([
+            'exam_schedule_sent_at' => now(),
+            'exam_schedule_payload' => $payload,
+        ]);
+
+        return response()->json([
+            'message' => 'Exam schedule invitation sent successfully.',
+            'application' => $application->fresh(),
         ]);
     }
 

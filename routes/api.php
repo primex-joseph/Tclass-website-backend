@@ -46,6 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admissions', [AdmissionController::class, 'index']);
         Route::post('/admissions/{id}/approve', [AdmissionController::class, 'approve']);
         Route::post('/admissions/{id}/reject', [AdmissionController::class, 'reject']);
+        Route::patch('/admissions/{id}/exam-status', [AdmissionController::class, 'updateExamStatus']);
+        Route::post('/admissions/{id}/send-exam-schedule', [AdmissionController::class, 'sendExamSchedule']);
     });
 
     Route::prefix('student')->group(function () {
