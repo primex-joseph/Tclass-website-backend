@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class StudentEnrollmentController extends Controller
 {
@@ -38,11 +39,40 @@ class StudentEnrollmentController extends Controller
             ->pluck('course_id');
     }
 
-    private function nextCurriculumTerm(int $userId): array
+    private function normalizeProgramKey(?string $programName): ?string
+    {
+        $value = trim((string) $programName);
+        if ($value === '') {
+            return null;
+        }
+
+        $normalized = Str::upper(Str::slug($value, '_'));
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function studentProgramKey(int $userId): ?string
+    {
+        $programName = DB::table('admission_applications')
+            ->where('created_user_id', $userId)
+            ->where('status', 'approved')
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id')
+            ->value('primary_course');
+
+        return $this->normalizeProgramKey($programName);
+    }
+
+    private function nextCurriculumTerm(int $userId, ?string $programKey = null): array
     {
         $passed = $this->passedCourseIds($userId);
-        $terms = DB::table('courses')
-            ->where('is_active', 1)
+        $termsQuery = DB::table('courses')
+            ->where('is_active', 1);
+
+        if ($programKey) {
+            $termsQuery->where('program_key', $programKey);
+        }
+
+        $terms = $termsQuery
             ->select('year_level', 'semester')
             ->distinct()
             ->orderBy('year_level')
@@ -50,11 +80,16 @@ class StudentEnrollmentController extends Controller
             ->get();
 
         foreach ($terms as $term) {
-            $termCourseIds = DB::table('courses')
+            $termCoursesQuery = DB::table('courses')
                 ->where('is_active', 1)
                 ->where('year_level', $term->year_level)
-                ->where('semester', $term->semester)
-                ->pluck('id');
+                ->where('semester', $term->semester);
+
+            if ($programKey) {
+                $termCoursesQuery->where('program_key', $programKey);
+            }
+
+            $termCourseIds = $termCoursesQuery->pluck('id');
 
             $allPassed = $termCourseIds->every(fn ($courseId) => $passed->contains($courseId));
             if (! $allPassed) {
@@ -89,7 +124,9 @@ class StudentEnrollmentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $rows = DB::table('courses as c')
+        $programKey = $this->studentProgramKey($user->id);
+
+        $query = DB::table('courses as c')
             ->leftJoin('student_course_results as r', function ($join) use ($user) {
                 $join->on('r.course_id', '=', 'c.id')->where('r.user_id', $user->id);
             })
@@ -103,15 +140,22 @@ class StudentEnrollmentController extends Controller
                 'c.semester',
                 'r.grade',
                 'r.status as result_status'
-            )
+            );
+
+        if ($programKey) {
+            $query->where('c.program_key', $programKey);
+        }
+
+        $rows = $query
             ->orderBy('c.year_level')
             ->orderBy('c.semester')
             ->orderBy('c.code')
             ->get();
 
-        $next = $this->nextCurriculumTerm($user->id);
+        $next = $this->nextCurriculumTerm($user->id, $programKey);
 
         return response()->json([
+            'program_key' => $programKey,
             'next_term' => $next,
             'evaluation' => $rows,
         ]);
@@ -124,12 +168,19 @@ class StudentEnrollmentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $courses = DB::table('courses')
+        $programKey = $this->studentProgramKey($user->id);
+
+        $query = DB::table('courses')
             ->where('is_active', 1)
             ->orderBy('year_level')
             ->orderBy('semester')
-            ->orderBy('code')
-            ->get();
+            ->orderBy('code');
+
+        if ($programKey) {
+            $query->where('program_key', $programKey);
+        }
+
+        $courses = $query->get();
 
         return response()->json(['courses' => $courses]);
     }
@@ -252,15 +303,21 @@ class StudentEnrollmentController extends Controller
             return response()->json(['message' => 'No active period available.'], 422);
         }
 
-        $next = $this->nextCurriculumTerm($user->id);
+        $programKey = $this->studentProgramKey($user->id);
+        $next = $this->nextCurriculumTerm($user->id, $programKey);
         $passed = $this->passedCourseIds($user->id);
 
-        $termCourses = DB::table('courses')
+        $termCoursesQuery = DB::table('courses')
             ->where('is_active', 1)
             ->where('year_level', $next['year_level'])
             ->where('semester', $next['semester'])
-            ->orderBy('code')
-            ->get();
+            ->orderBy('code');
+
+        if ($programKey) {
+            $termCoursesQuery->where('program_key', $programKey);
+        }
+
+        $termCourses = $termCoursesQuery->get();
 
         $addedCount = 0;
         foreach ($termCourses as $course) {
@@ -292,6 +349,7 @@ class StudentEnrollmentController extends Controller
                 ? "Auto pre-enlist added {$addedCount} subjects."
                 : 'No subjects added by auto pre-enlist (check curriculum/prerequisites).',
             'added_count' => $addedCount,
+            'program_key' => $programKey,
             'next_term' => $next,
         ]);
     }

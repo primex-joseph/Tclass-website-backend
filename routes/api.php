@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdminEnrollmentController;
+use App\Http\Controllers\Api\AdminCurriculumController;
 use App\Http\Controllers\Api\AdmissionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContactController;
@@ -43,6 +44,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/enrollments', [AdminEnrollmentController::class, 'index']);
         Route::patch('/enrollments/{enrollmentId}', [AdminEnrollmentController::class, 'updateStatus']);
         Route::patch('/enrollment-periods/{periodId}/activate', [AdminEnrollmentController::class, 'activatePeriod']);
+        Route::get('/curricula', [AdminCurriculumController::class, 'index']);
+        Route::post('/curricula', [AdminCurriculumController::class, 'store']);
+        Route::patch('/curricula/{curriculumId}/activate', [AdminCurriculumController::class, 'activate']);
         Route::get('/admissions', [AdmissionController::class, 'index']);
         Route::post('/admissions/{id}/approve', [AdmissionController::class, 'approve']);
         Route::post('/admissions/{id}/reject', [AdmissionController::class, 'reject']);
