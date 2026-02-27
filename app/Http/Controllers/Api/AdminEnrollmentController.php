@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Support\EnrollmentPeriodRollover;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -30,12 +31,24 @@ class AdminEnrollmentController extends Controller
         $query = DB::table('enrollments as e')
             ->join('users as s', 's.id', '=', 'e.user_id')
             ->join('courses as c', 'c.id', '=', 'e.course_id')
+            ->leftJoin('class_offerings as o', 'o.id', '=', 'e.offering_id')
+            ->leftJoin('schedule_sections as ss_offer', 'ss_offer.id', '=', 'o.section_id')
+            ->leftJoin('schedule_teachers as st_offer', 'st_offer.id', '=', 'o.teacher_id')
+            ->leftJoin('schedule_rooms as sr_offer', 'sr_offer.id', '=', 'o.room_id')
+            ->leftJoin('class_schedule_items as csi', 'csi.enrollment_id', '=', 'e.id')
+            ->leftJoin('schedule_sections as ss', 'ss.id', '=', 'csi.section_id')
+            ->leftJoin('schedule_teachers as st', 'st.id', '=', 'csi.teacher_id')
+            ->leftJoin('schedule_rooms as sr', 'sr.id', '=', 'csi.room_id')
             ->leftJoin('users as admin', 'admin.id', '=', 'e.decided_by')
             ->leftJoin('enrollment_periods as p', 'p.id', '=', 'e.period_id')
             ->select(
                 'e.id', 'e.status', 'e.remarks', 'e.requested_at', 'e.assessed_at', 'e.decided_at',
                 's.id as student_id', 's.name as student_name', 's.email as student_email',
-                'c.id as course_id', 'c.code as course_code', 'c.title as course_title', 'c.units', 'c.schedule', 'c.section',
+                'c.id as course_id', 'c.code as course_code', 'c.title as course_title', 'c.units',
+                DB::raw('COALESCE(o.schedule_text, csi.schedule_text, c.schedule) as schedule'),
+                DB::raw('COALESCE(ss_offer.section_code, ss.section_code, c.section) as section'),
+                DB::raw('COALESCE(st_offer.full_name, st.full_name, c.instructor) as instructor'),
+                DB::raw('COALESCE(sr_offer.room_code, sr.room_code, c.room) as room'),
                 'p.id as period_id', 'p.name as period_name',
                 'admin.name as decided_by_name'
             )
@@ -103,5 +116,27 @@ class AdminEnrollmentController extends Controller
         DB::table('enrollment_periods')->where('id', $periodId)->update(['is_active' => 1, 'updated_at' => now()]);
 
         return response()->json(['message' => 'Active enrollment period updated.']);
+    }
+
+    public function rolloverPeriod(Request $request)
+    {
+        $user = $request->user();
+        if (! $this->ensureRole($user->id, 'admin')) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        try {
+            $result = EnrollmentPeriodRollover::rolloverToNextPeriod();
+
+            return response()->json([
+                'message' => 'Enrollment period rolled over successfully.',
+                'from' => $result['from'],
+                'to' => $result['to'],
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Failed to roll over enrollment period.'], 500);
+        }
     }
 }

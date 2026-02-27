@@ -31,6 +31,34 @@ class StudentEnrollmentController extends Controller
         return $requested ? (int) $requested : $this->activePeriodId();
     }
 
+    private function activeEnrollmentStatuses(): array
+    {
+        return ['draft', 'unofficial', 'official'];
+    }
+
+    private function findAvailableOffering(int $courseId, int $periodId): ?object
+    {
+        $enrolledCounts = DB::table('enrollments')
+            ->select('offering_id', DB::raw('COUNT(*) as enrolled_count'))
+            ->whereNotNull('offering_id')
+            ->whereIn('status', $this->activeEnrollmentStatuses())
+            ->groupBy('offering_id');
+
+        return DB::table('class_offerings as o')
+            ->leftJoinSub($enrolledCounts, 'ec', function ($join) {
+                $join->on('ec.offering_id', '=', 'o.id');
+            })
+            ->where('o.is_active', 1)
+            ->where('o.period_id', $periodId)
+            ->where('o.course_id', $courseId)
+            ->whereRaw('COALESCE(ec.enrolled_count, 0) < o.capacity')
+            ->orderBy('o.section_id')
+            ->orderBy('o.day_of_week')
+            ->orderBy('o.start_time')
+            ->select('o.*', DB::raw('COALESCE(ec.enrolled_count, 0) as enrolled_count'))
+            ->first();
+    }
+
     private function passedCourseIds(int $userId): Collection
     {
         return DB::table('student_course_results')
@@ -185,6 +213,94 @@ class StudentEnrollmentController extends Controller
         return response()->json(['courses' => $courses]);
     }
 
+    public function enrollmentOfferings(Request $request)
+    {
+        $user = $request->user();
+        if (! $this->ensureRole($user->id, 'student')) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $validated = $request->validate([
+            'period_id' => ['nullable', 'integer', 'exists:enrollment_periods,id'],
+            'year_level' => ['nullable', 'integer', 'min:1', 'max:6'],
+            'semester' => ['nullable', 'integer', 'min:1', 'max:3'],
+        ]);
+
+        $periodId = $validated['period_id'] ?? $this->activePeriodId();
+        if (! $periodId) {
+            return response()->json(['offerings' => []]);
+        }
+
+        $programKey = $this->studentProgramKey($user->id);
+
+        $enrolledCounts = DB::table('enrollments')
+            ->select('offering_id', DB::raw('COUNT(*) as enrolled_count'))
+            ->whereNotNull('offering_id')
+            ->whereIn('status', $this->activeEnrollmentStatuses())
+            ->groupBy('offering_id');
+
+        $query = DB::table('class_offerings as o')
+            ->join('courses as c', 'c.id', '=', 'o.course_id')
+            ->leftJoin('schedule_sections as ss', 'ss.id', '=', 'o.section_id')
+            ->leftJoin('schedule_teachers as st', 'st.id', '=', 'o.teacher_id')
+            ->leftJoin('schedule_rooms as sr', 'sr.id', '=', 'o.room_id')
+            ->leftJoinSub($enrolledCounts, 'ec', function ($join) {
+                $join->on('ec.offering_id', '=', 'o.id');
+            })
+            ->where('o.is_active', 1)
+            ->where('o.period_id', $periodId)
+            ->where('c.is_active', 1)
+            ->whereRaw('COALESCE(ec.enrolled_count, 0) < o.capacity')
+            ->select(
+                'o.id as offering_id',
+                'c.id as course_id',
+                'c.code',
+                'c.title',
+                'c.units',
+                'c.year_level',
+                'c.semester',
+                'ss.section_code as section',
+                'st.full_name as instructor',
+                'sr.room_code as room',
+                'o.day_of_week',
+                'o.start_time',
+                'o.end_time',
+                'o.schedule_text',
+                'o.capacity',
+                DB::raw('COALESCE(ec.enrolled_count, 0) as enrolled_count')
+            )
+            ->orderBy('c.code')
+            ->orderBy('ss.section_code')
+            ->orderBy('o.day_of_week')
+            ->orderBy('o.start_time');
+
+        if ($programKey) {
+            $query->where('c.program_key', $programKey);
+        }
+        if (! empty($validated['year_level'])) {
+            $query->where('c.year_level', (int) $validated['year_level']);
+        }
+        if (! empty($validated['semester'])) {
+            $query->where('c.semester', (int) $validated['semester']);
+        }
+
+        $rows = $query->get()->map(function ($row) {
+            $startTs = strtotime("1970-01-01 {$row->start_time}");
+            $endTs = strtotime("1970-01-01 {$row->end_time}");
+            $startLabel = $startTs ? date('h:i A', $startTs) : $row->start_time;
+            $endLabel = $endTs ? date('h:i A', $endTs) : $row->end_time;
+            $row->schedule = $row->schedule_text ?: "{$row->day_of_week} {$startLabel} - {$endLabel}";
+            $row->slots_left = max(0, (int) $row->capacity - (int) $row->enrolled_count);
+            return $row;
+        })->values();
+
+        return response()->json([
+            'program_key' => $programKey,
+            'period_id' => $periodId,
+            'offerings' => $rows,
+        ]);
+    }
+
     public function preEnlisted(Request $request)
     {
         $user = $request->user();
@@ -196,10 +312,29 @@ class StudentEnrollmentController extends Controller
 
         $rows = DB::table('enrollments as e')
             ->join('courses as c', 'c.id', '=', 'e.course_id')
+            ->leftJoin('class_offerings as o', 'o.id', '=', 'e.offering_id')
+            ->leftJoin('schedule_sections as ss', 'ss.id', '=', 'o.section_id')
+            ->leftJoin('schedule_teachers as st', 'st.id', '=', 'o.teacher_id')
+            ->leftJoin('schedule_rooms as sr', 'sr.id', '=', 'o.room_id')
             ->where('e.user_id', $user->id)
             ->where('e.period_id', $periodId)
             ->whereIn('e.status', ['draft'])
-            ->select('e.id', 'e.status', 'e.remarks', 'c.id as course_id', 'c.code', 'c.title', 'c.units', 'c.tf', 'c.lec', 'c.lab', 'c.schedule', 'c.section')
+            ->select(
+                'e.id',
+                'e.status',
+                'e.remarks',
+                'c.id as course_id',
+                'c.code',
+                'c.title',
+                'c.units',
+                'c.tf',
+                'c.lec',
+                'c.lab',
+                DB::raw('COALESCE(o.schedule_text, c.schedule) as schedule'),
+                DB::raw('COALESCE(ss.section_code, c.section) as section'),
+                DB::raw('COALESCE(st.full_name, c.instructor) as instructor'),
+                DB::raw('COALESCE(sr.room_code, c.room) as room')
+            )
             ->orderBy('c.code')
             ->get();
 
@@ -217,11 +352,29 @@ class StudentEnrollmentController extends Controller
 
         $rows = DB::table('enrollments as e')
             ->join('courses as c', 'c.id', '=', 'e.course_id')
+            ->leftJoin('class_offerings as o', 'o.id', '=', 'e.offering_id')
+            ->leftJoin('schedule_sections as ss', 'ss.id', '=', 'o.section_id')
+            ->leftJoin('schedule_teachers as st', 'st.id', '=', 'o.teacher_id')
+            ->leftJoin('schedule_rooms as sr', 'sr.id', '=', 'o.room_id')
             ->leftJoin('users as admin', 'admin.id', '=', 'e.decided_by')
             ->where('e.user_id', $user->id)
             ->where('e.period_id', $periodId)
             ->whereIn('e.status', ['unofficial', 'official'])
-            ->select('e.id', 'e.status', 'e.assessed_at', 'e.decided_at', 'c.id as course_id', 'c.code', 'c.title', 'c.units', 'c.schedule', 'c.room', 'c.instructor', 'c.section', 'admin.name as approved_by')
+            ->select(
+                'e.id',
+                'e.status',
+                'e.assessed_at',
+                'e.decided_at',
+                'c.id as course_id',
+                'c.code',
+                'c.title',
+                'c.units',
+                DB::raw('COALESCE(o.schedule_text, c.schedule) as schedule'),
+                DB::raw('COALESCE(sr.room_code, c.room) as room'),
+                DB::raw('COALESCE(st.full_name, c.instructor) as instructor'),
+                DB::raw('COALESCE(ss.section_code, c.section) as section'),
+                'admin.name as approved_by'
+            )
             ->orderBy('c.code')
             ->get();
 
@@ -245,11 +398,42 @@ class StudentEnrollmentController extends Controller
         $validated = $request->validate([
             'course_id' => ['required', 'integer', 'exists:courses,id'],
             'period_id' => ['nullable', 'integer', 'exists:enrollment_periods,id'],
+            'offering_id' => ['nullable', 'integer', 'exists:class_offerings,id'],
         ]);
 
         $periodId = $validated['period_id'] ?? $this->activePeriodId();
         if (! $periodId) {
             return response()->json(['message' => 'No active period available.'], 422);
+        }
+
+        $offeringId = $validated['offering_id'] ?? null;
+
+        if ($offeringId) {
+            $selectedOffering = DB::table('class_offerings')
+                ->where('id', $offeringId)
+                ->where('period_id', $periodId)
+                ->where('course_id', $validated['course_id'])
+                ->where('is_active', 1)
+                ->first();
+
+            if (! $selectedOffering) {
+                return response()->json(['message' => 'Selected section schedule is invalid for this course/period.'], 422);
+            }
+
+            $activeCount = DB::table('enrollments')
+                ->where('offering_id', $offeringId)
+                ->whereIn('status', $this->activeEnrollmentStatuses())
+                ->count();
+
+            if ($activeCount >= (int) $selectedOffering->capacity) {
+                return response()->json(['message' => 'Selected section is already full.'], 422);
+            }
+        } else {
+            $offering = $this->findAvailableOffering((int) $validated['course_id'], (int) $periodId);
+            if (! $offering) {
+                return response()->json(['message' => 'No available section schedule for this subject in the selected period.'], 422);
+            }
+            $offeringId = (int) $offering->id;
         }
 
         $existing = DB::table('enrollments')
@@ -268,6 +452,7 @@ class StudentEnrollmentController extends Controller
 
             DB::table('enrollments')->where('id', $existing->id)->update([
                 'status' => 'draft',
+                'offering_id' => $offeringId,
                 'remarks' => null,
                 'requested_at' => null,
                 'assessed_at' => null,
@@ -283,6 +468,7 @@ class StudentEnrollmentController extends Controller
             'user_id' => $user->id,
             'course_id' => $validated['course_id'],
             'period_id' => $periodId,
+            'offering_id' => $offeringId,
             'status' => 'draft',
             'created_at' => now(),
             'updated_at' => now(),
@@ -298,13 +484,21 @@ class StudentEnrollmentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $periodId = $this->periodIdFromRequest($request);
+        $validated = $request->validate([
+            'period_id' => ['nullable', 'integer', 'exists:enrollment_periods,id'],
+            'year_level' => ['nullable', 'integer', 'min:1', 'max:6'],
+            'semester' => ['nullable', 'integer', 'min:1', 'max:3'],
+        ]);
+
+        $periodId = $validated['period_id'] ?? $this->periodIdFromRequest($request);
         if (! $periodId) {
             return response()->json(['message' => 'No active period available.'], 422);
         }
 
         $programKey = $this->studentProgramKey($user->id);
-        $next = $this->nextCurriculumTerm($user->id, $programKey);
+        $next = (! empty($validated['year_level']) && ! empty($validated['semester']))
+            ? ['year_level' => (int) $validated['year_level'], 'semester' => (int) $validated['semester']]
+            : $this->nextCurriculumTerm($user->id, $programKey);
         $passed = $this->passedCourseIds($user->id);
 
         $termCoursesQuery = DB::table('courses')
@@ -320,8 +514,15 @@ class StudentEnrollmentController extends Controller
         $termCourses = $termCoursesQuery->get();
 
         $addedCount = 0;
+        $skippedNoSection = [];
         foreach ($termCourses as $course) {
             if ($course->prerequisite_course_id && ! $passed->contains($course->prerequisite_course_id)) {
+                continue;
+            }
+
+            $offering = $this->findAvailableOffering((int) $course->id, (int) $periodId);
+            if (! $offering) {
+                $skippedNoSection[] = $course->code;
                 continue;
             }
 
@@ -336,11 +537,17 @@ class StudentEnrollmentController extends Controller
                     'user_id' => $user->id,
                     'course_id' => $course->id,
                     'period_id' => $periodId,
+                    'offering_id' => $offering->id,
                     'status' => 'draft',
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
                 $addedCount++;
+            } elseif ($exists->status === 'draft' && ! $exists->offering_id) {
+                DB::table('enrollments')->where('id', $exists->id)->update([
+                    'offering_id' => $offering->id,
+                    'updated_at' => now(),
+                ]);
             }
         }
 
@@ -349,6 +556,7 @@ class StudentEnrollmentController extends Controller
                 ? "Auto pre-enlist added {$addedCount} subjects."
                 : 'No subjects added by auto pre-enlist (check curriculum/prerequisites).',
             'added_count' => $addedCount,
+            'skipped_no_section' => $skippedNoSection,
             'program_key' => $programKey,
             'next_term' => $next,
         ]);
