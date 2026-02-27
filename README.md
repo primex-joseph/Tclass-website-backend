@@ -1,132 +1,49 @@
 # TClass Backend (Laravel API)
 
-Backend API for the TClass system, supporting admissions, vocational enrollment, portal authentication, admin operations, and messaging.
+Backend API for admissions, enrollment, curriculum, scheduling, and portal auth.
 
-## Core Modules
-
-- Authentication (`/api/auth/*`) with portal role checks (`student`, `faculty`, `admin`)
-- Admission and vocational submission workflows
-- Enrollment lifecycle endpoints for student/admin flows
-- Admin dashboard APIs (stats, users, trends data)
-- Contact form processing + admin inbox message persistence
-- Mail notifications (contact, admission approved/rejected)
-
-## Tech Stack
-
+## Stack
 - Laravel 12
 - PHP 8.2+
 - MySQL/MariaDB
-- Laravel Sanctum
-- Spatie Permission (role support where enabled)
+- Sanctum auth
 
-## Quick Start (Fresh PC)
-
-Use the one-shot bootstrap script:
-
+## Quick Start
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -Serve
-```
-
-This will:
-
-1. Install dependencies
-2. Create/configure `.env`
-3. Create database
-4. Run `migrate:fresh --seed`
-5. Optionally create admin account
-6. Start local server
-
-Full guide: `docs/BACKEND_FRESH_START.md`
-
-## Manual Setup
-
-If you prefer manual setup, follow:
-
-- `docs/backend-setup.md`
-
-## Required Environment Keys
-
-Minimum required in `.env`:
-
-```env
-APP_URL=http://127.0.0.1:8000
-FRONTEND_URL=http://localhost:3000
-
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=tclass_db
-DB_USERNAME=root
-DB_PASSWORD=
-
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_ENCRYPTION=tls
-MAIL_USERNAME=your_account@gmail.com
-MAIL_PASSWORD=your_app_password
-MAIL_FROM_ADDRESS=your_account@gmail.com
-MAIL_FROM_NAME="Tarlac Center for Learning and Skills Success"
-
-CONTACT_RECEIVER_EMAIL=your_inbox@gmail.com
-```
-
-After env changes:
-
-```powershell
-php artisan config:clear
-php artisan cache:clear
-```
-
-## Required PHP Extensions
-
-Enable these extensions in `php.ini`:
-
-- `bcmath`
-- `ctype`
-- `curl`
-- `dom`
-- `fileinfo`
-- `json`
-- `mbstring`
-- `openssl`
-- `pdo`
-- `pdo_mysql`
-- `tokenizer`
-- `xml`
-
-Recommended in dev: `zip`, `intl`, `gd`
-
-Verify:
-
-```powershell
-php -m
-composer check-platform-reqs
-```
-
-## Dev Test Accounts
-
-Seeded accounts (from `DatabaseSeeder`):
-
-- Faculty: `facultydev@tclass.local` / `Faculty123!`
-- Student: `studentdev@tclass.local` / `Student123!`
-
-Admin account can be created with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-admin-user.ps1
-```
-
-## Common Commands
-
-```powershell
+composer install
+copy .env.example .env
+php artisan key:generate
 php artisan migrate
 php artisan db:seed --force
 php artisan storage:link
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-## Docs Index
+Backend URL: `http://127.0.0.1:8000`
+API Base: `http://127.0.0.1:8000/api`
 
+## Core Modules
+- Auth (`/api/auth/*`)
+- Student Enrollment flow (`/api/student/*`)
+- Admin Enrollment approvals (`/api/admin/enrollments`)
+- Curriculum management (`/api/admin/curricula`)
+- Class Scheduling (`/api/admin/scheduling/*`)
+- Contact + admissions
+
+## Scheduling + Curriculum Notes
+- Curriculum is stored in:
+  - `curriculum_versions`
+  - `curriculum_subjects`
+- Active curriculum syncs to `courses`.
+- Scheduling creates/updates `class_offerings`.
+- Student schedule/enrollment consume offerings.
+
+## Enrollment Period Rollover
+- API: `POST /api/admin/enrollment-periods/rollover`
+- CLI: `php artisan enrollment:rollover`
+- Transition order:
+  - 1st Semester -> 2nd Semester -> Summer -> next AY 1st Semester
+
+## Docs
 - `docs/backend-setup.md`
 - `docs/BACKEND_FRESH_START.md`
