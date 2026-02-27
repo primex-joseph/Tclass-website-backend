@@ -361,5 +361,44 @@ class AdminCurriculumController extends Controller
 
         return response()->json(['message' => 'Curriculum activated successfully.']);
     }
+    public function subjects(Request $request, int $curriculumId): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $version = DB::table('curriculum_versions')->where('id', $curriculumId)->first();
+        if (! $version) {
+            return response()->json(['message' => 'Curriculum version not found.'], 404);
+        }
+
+        $subjects = DB::table('curriculum_subjects')
+            ->where('curriculum_version_id', $curriculumId)
+            ->orderBy('year_level')
+            ->orderBy('semester')
+            ->orderBy('sort_order')
+            ->orderBy('code')
+            ->get([
+                'id',
+                'year_level',
+                'semester',
+                'code',
+                'title',
+                'units',
+                'prerequisite_code',
+            ]);
+
+        return response()->json([
+            'curriculum' => [
+                'id' => (int) $version->id,
+                'label' => (string) $version->label,
+                'program_name' => (string) $version->program_name,
+                'effective_ay' => $version->effective_ay,
+                'version' => (string) $version->version,
+                'is_active' => (bool) $version->is_active,
+            ],
+            'subjects' => $subjects,
+        ]);
+    }
 }
 

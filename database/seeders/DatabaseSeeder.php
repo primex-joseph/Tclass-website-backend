@@ -71,27 +71,21 @@ class DatabaseSeeder extends Seeder
         }
 
         if (Schema::hasTable('schedule_sections')) {
-            DB::table('schedule_sections')->updateOrInsert(
-                ['section_code' => 'BSIT-3A'],
-                [
-                    'program_name' => 'BS Information Technology',
-                    'year_level' => 3,
-                    'is_active' => 1,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
-
-            DB::table('schedule_sections')->updateOrInsert(
-                ['section_code' => 'BSIT-4A'],
-                [
-                    'program_name' => 'BS Information Technology',
-                    'year_level' => 4,
-                    'is_active' => 1,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
+            foreach ([1, 2, 3, 4] as $year) {
+                foreach (['A', 'B', 'C'] as $suffix) {
+                    $code = "BSIT-{$year}{$suffix}";
+                    DB::table('schedule_sections')->updateOrInsert(
+                        ['section_code' => $code],
+                        [
+                            'program_name' => 'BS Information Technology',
+                            'year_level' => $year,
+                            'is_active' => 1,
+                            'updated_at' => now(),
+                            'created_at' => now(),
+                        ]
+                    );
+                }
+            }
         }
 
         if (Schema::hasTable('schedule_rooms')) {
@@ -176,3 +170,4 @@ class DatabaseSeeder extends Seeder
         }
     }
 }
+

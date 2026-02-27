@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/enrollment-periods/{periodId}/activate', [AdminEnrollmentController::class, 'activatePeriod']);
         Route::post('/enrollment-periods/rollover', [AdminEnrollmentController::class, 'rolloverPeriod']);
         Route::get('/curricula', [AdminCurriculumController::class, 'index']);
+        Route::get('/curricula/{curriculumId}/subjects', [AdminCurriculumController::class, 'subjects']);
         Route::post('/curricula', [AdminCurriculumController::class, 'store']);
         Route::patch('/curricula/{curriculumId}/activate', [AdminCurriculumController::class, 'activate']);
         Route::get('/admissions', [AdmissionController::class, 'index']);
@@ -71,3 +72,4 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
