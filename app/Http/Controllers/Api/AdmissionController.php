@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\AdmissionApprovedMail;
 use App\Mail\AdmissionRejectedMail;
 use App\Mail\EntranceExamScheduleMail;
+use App\Mail\PortalUserCredentialsMail;
 use App\Models\AdmissionApplication;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -13,10 +14,45 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class AdmissionController extends Controller
 {
+    private function canonicalProgramName(string $name): string
+    {
+        $trimmed = trim($name);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        $normalized = Str::of($trimmed)->lower()->replaceMatches('/[^a-z0-9]+/', ' ')->trim()->value();
+        $aliases = [
+            'bs information technology' => 'Bachelor of Science in Information Technology',
+            'bsit' => 'Bachelor of Science in Information Technology',
+            'b s information technology' => 'Bachelor of Science in Information Technology',
+        ];
+
+        return $aliases[$normalized] ?? $trimmed;
+    }
+
+    private function canonicalProgramKey(string $name): string
+    {
+        $canonical = $this->canonicalProgramName($name);
+        return strtoupper(Str::slug($canonical, '_'));
+    }
+
+    private function extractDepartmentKey(?string $courseCode): string
+    {
+        $value = strtoupper(trim((string) $courseCode));
+        if ($value === '') {
+            return 'GENERAL';
+        }
+
+        $prefix = preg_replace('/[^A-Z].*$/', '', $value);
+        return $prefix !== '' ? $prefix : $value;
+    }
+
     private function currentRole(Request $request): ?string
     {
         return DB::table('portal_user_roles')
@@ -241,6 +277,85 @@ class AdmissionController extends Controller
         ]);
     }
 
+    public function createPortalUser(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'role' => ['nullable', 'in:student,faculty,admin'],
+            'password' => ['nullable', 'string', 'min:8', 'max:120'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $role = strtolower((string) ($validated['role'] ?? 'admin'));
+        $normalizedEmail = Str::lower((string) $validated['email']);
+        $name = trim((string) $validated['name']);
+        $isActive = array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true;
+
+        if (User::query()->where('email', $normalizedEmail)->exists()) {
+            return response()->json([
+                'message' => 'A user with this email already exists.',
+            ], 422);
+        }
+
+        $generatedPassword = null;
+        $rawPassword = isset($validated['password']) && trim((string) $validated['password']) !== ''
+            ? (string) $validated['password']
+            : null;
+
+        if ($rawPassword === null) {
+            $generatedPassword = $this->generateTemporaryPassword();
+            $rawPassword = $generatedPassword;
+        }
+
+        $user = User::query()->create([
+            'name' => $name,
+            'email' => $normalizedEmail,
+            'password' => Hash::make($rawPassword),
+            'student_number' => $role === 'student' ? $this->generateStudentNumber() : null,
+            'must_change_password' => true,
+        ]);
+
+        DB::table('portal_user_roles')->updateOrInsert(
+            ['user_id' => $user->id, 'role' => $role],
+            ['is_active' => $isActive ? 1 : 0, 'created_at' => now(), 'updated_at' => now()]
+        );
+
+        $mailWarning = null;
+        try {
+            Mail::to($normalizedEmail)->send(
+                new PortalUserCredentialsMail(
+                    fullName: $name,
+                    email: $normalizedEmail,
+                    role: $role,
+                    password: $rawPassword
+                )
+            );
+        } catch (\Throwable $e) {
+            $mailWarning = 'Account created, but credentials email failed to send. Check SMTP configuration.';
+        }
+
+        return response()->json([
+            'message' => ucfirst($role) . ' account created successfully.',
+            'warning' => $mailWarning,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $role,
+                'status' => $isActive ? 'active' : 'inactive',
+                'created_at' => $user->created_at,
+            ],
+            'credentials_preview' => [
+                'temporary_password' => $generatedPassword,
+            ],
+        ], 201);
+    }
+
     public function dashboardStats(Request $request): JsonResponse
     {
         if ($resp = $this->assertAdmin($request)) {
@@ -280,6 +395,96 @@ class AdmissionController extends Controller
         ]);
     }
 
+    public function departmentOverview(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        // Program offerings (e.g., BSIT) come from curriculum versions.
+        $programRows = DB::table('curriculum_versions')
+            ->select('program_key', 'program_name', 'is_active', 'id')
+            ->orderByDesc('is_active')
+            ->orderByDesc('id')
+            ->get();
+
+        $programMap = [];
+        foreach ($programRows as $row) {
+            $canonicalName = $this->canonicalProgramName((string) $row->program_name);
+            $key = $this->canonicalProgramKey($canonicalName);
+            if ($key === '') {
+                continue;
+            }
+            if (! isset($programMap[$key])) {
+                $programMap[$key] = [
+                    'id' => count($programMap) + 1,
+                    'name' => $canonicalName,
+                    'head' => '',
+                    'faculty' => 0,
+                    'students' => 0,
+                    'classes' => 0,
+                ];
+            }
+        }
+
+        // Also include any admitted program names that might not yet be in curriculum_versions.
+        $admissionPrograms = DB::table('admission_applications')
+            ->where('application_type', 'admission')
+            ->whereNotNull('primary_course')
+            ->select('primary_course')
+            ->distinct()
+            ->pluck('primary_course');
+
+        foreach ($admissionPrograms as $programName) {
+            $name = trim((string) $programName);
+            if ($name === '') {
+                continue;
+            }
+            $canonicalName = $this->canonicalProgramName($name);
+            $key = $this->canonicalProgramKey($canonicalName);
+            if ($key === '') {
+                continue;
+            }
+            if (! isset($programMap[$key])) {
+                $programMap[$key] = [
+                    'id' => count($programMap) + 1,
+                    'name' => $canonicalName,
+                    'head' => '',
+                    'faculty' => 0,
+                    'students' => 0,
+                    'classes' => 0,
+                ];
+            }
+        }
+
+        // Student population per program: approved admissions linked to created student users.
+        $population = DB::table('admission_applications')
+            ->where('application_type', 'admission')
+            ->where('status', 'approved')
+            ->whereNotNull('created_user_id')
+            ->select('primary_course', DB::raw('COUNT(DISTINCT created_user_id) as total_students'))
+            ->groupBy('primary_course')
+            ->get();
+
+        foreach ($population as $row) {
+            $name = trim((string) $row->primary_course);
+            if ($name === '') {
+                continue;
+            }
+            $key = $this->canonicalProgramKey($name);
+            if (isset($programMap[$key])) {
+                $programMap[$key]['students'] = (int) $row->total_students;
+            }
+        }
+
+        $rows = array_values($programMap);
+        usort($rows, fn (array $a, array $b) => strcmp($a['name'], $b['name']));
+
+        return response()->json([
+            'departments' => $rows,
+        ]);
+    }
+
     public function approve(Request $request, int $id): JsonResponse
     {
         if ($resp = $this->assertAdmin($request)) {
@@ -293,6 +498,18 @@ class AdmissionController extends Controller
 
         if ($application->status !== 'pending') {
             return response()->json(['message' => 'Only pending applications can be approved.'], 422);
+        }
+
+        $hasAttendanceColumn = Schema::hasColumn('admission_applications', 'exam_attendance_status');
+        $attendanceStatus = $hasAttendanceColumn
+            ? (string) ($application->exam_attendance_status ?? 'not_attended')
+            : (($application->exam_status ?? 'not_attended') === 'not_attended' ? 'not_attended' : 'attended');
+        $examResult = (string) ($application->exam_status ?? 'not_attended');
+
+        if ($attendanceStatus !== 'attended' || $examResult !== 'passed') {
+            return response()->json([
+                'message' => 'Applicant can only be approved when exam attendance is Attended and exam result is Passed.',
+            ], 422);
         }
 
         if (User::query()->where('email', $application->email)->exists()) {
@@ -396,17 +613,48 @@ class AdmissionController extends Controller
         }
 
         $validated = $request->validate([
-            'exam_status' => ['required', 'in:passed,failed,not_attended'],
+            'exam_status' => ['nullable', 'in:passed,failed,not_attended'],
+            'exam_attendance_status' => ['nullable', 'in:attended,not_attended'],
         ]);
+
+        if (! array_key_exists('exam_status', $validated) && ! array_key_exists('exam_attendance_status', $validated)) {
+            return response()->json(['message' => 'Please provide exam_status or exam_attendance_status.'], 422);
+        }
 
         $application = AdmissionApplication::query()->find($id);
         if (! $application) {
             return response()->json(['message' => 'Application not found.'], 404);
         }
 
-        $application->update([
-            'exam_status' => $validated['exam_status'],
-        ]);
+        $hasAttendanceColumn = Schema::hasColumn('admission_applications', 'exam_attendance_status');
+        $updates = [];
+
+        if (array_key_exists('exam_status', $validated) && $validated['exam_status'] !== null) {
+            $updates['exam_status'] = $validated['exam_status'];
+            if ($hasAttendanceColumn && ! array_key_exists('exam_attendance_status', $validated)) {
+                $updates['exam_attendance_status'] = $validated['exam_status'] === 'not_attended' ? 'not_attended' : 'attended';
+            }
+        }
+
+        if ($hasAttendanceColumn && array_key_exists('exam_attendance_status', $validated) && $validated['exam_attendance_status'] !== null) {
+            $updates['exam_attendance_status'] = $validated['exam_attendance_status'];
+            if ($validated['exam_attendance_status'] === 'not_attended') {
+                $updates['exam_status'] = 'not_attended';
+            }
+        }
+
+        if (! $hasAttendanceColumn && empty($updates) && array_key_exists('exam_attendance_status', $validated)) {
+            return response()->json([
+                'message' => 'Exam attendance update skipped because database column is not available yet.',
+                'application' => $application->fresh(),
+            ]);
+        }
+
+        if (empty($updates)) {
+            return response()->json(['message' => 'No valid exam fields were provided.'], 422);
+        }
+
+        $application->update($updates);
 
         return response()->json([
             'message' => 'Exam status updated successfully.',
@@ -435,6 +683,12 @@ class AdmissionController extends Controller
         $application = AdmissionApplication::query()->find($id);
         if (! $application) {
             return response()->json(['message' => 'Application not found.'], 404);
+        }
+
+        if (! blank($application->exam_schedule_sent_at)) {
+            return response()->json([
+                'message' => 'Exam schedule was already sent to this student.',
+            ], 422);
         }
 
         if (blank($application->email)) {

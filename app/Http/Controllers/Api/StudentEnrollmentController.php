@@ -59,6 +59,32 @@ class StudentEnrollmentController extends Controller
             ->first();
     }
 
+    private function hydrateMissingOfferings(int $userId, int $periodId, array $statuses = ['draft', 'unofficial', 'official']): void
+    {
+        $rows = DB::table('enrollments')
+            ->where('user_id', $userId)
+            ->where('period_id', $periodId)
+            ->whereNull('offering_id')
+            ->whereIn('status', $statuses)
+            ->orderBy('id')
+            ->get(['id', 'course_id']);
+
+        foreach ($rows as $row) {
+            $offering = $this->findAvailableOffering((int) $row->course_id, $periodId);
+            if (! $offering) {
+                continue;
+            }
+
+            DB::table('enrollments')
+                ->where('id', $row->id)
+                ->whereNull('offering_id')
+                ->update([
+                    'offering_id' => (int) $offering->id,
+                    'updated_at' => now(),
+                ]);
+        }
+    }
+
     private function passedCourseIds(int $userId): Collection
     {
         return DB::table('student_course_results')
@@ -75,7 +101,20 @@ class StudentEnrollmentController extends Controller
         }
 
         $normalized = Str::upper(Str::slug($value, '_'));
-        return $normalized !== '' ? $normalized : null;
+        if ($normalized === '') {
+            return null;
+        }
+
+        // Normalize common aliases so student admissions and admin curriculum keys match.
+        if (str_starts_with($normalized, 'BACHELOR_OF_SCIENCE_IN_')) {
+            $normalized = 'BS_' . substr($normalized, strlen('BACHELOR_OF_SCIENCE_IN_'));
+        }
+
+        if ($normalized === 'BSIT' || str_contains($normalized, 'INFORMATION_TECHNOLOGY')) {
+            return 'BS_INFORMATION_TECHNOLOGY';
+        }
+
+        return $normalized;
     }
 
     private function studentProgramKey(int $userId): ?string
@@ -179,6 +218,35 @@ class StudentEnrollmentController extends Controller
             ->orderBy('c.semester')
             ->orderBy('c.code')
             ->get();
+
+        // Fallback: if courses table has no rows yet, read directly from active uploaded curriculum.
+        if ($programKey && $rows->isEmpty()) {
+            $activeVersionId = DB::table('curriculum_versions')
+                ->where('program_key', $programKey)
+                ->where('is_active', 1)
+                ->orderByDesc('id')
+                ->value('id');
+
+            if ($activeVersionId) {
+                $rows = DB::table('curriculum_subjects as s')
+                    ->where('s.curriculum_version_id', $activeVersionId)
+                    ->select(
+                        DB::raw('NULL as id'),
+                        's.code',
+                        's.title',
+                        's.units',
+                        's.year_level',
+                        's.semester',
+                        DB::raw('NULL as grade'),
+                        DB::raw('NULL as result_status')
+                    )
+                    ->orderBy('s.year_level')
+                    ->orderBy('s.semester')
+                    ->orderBy('s.sort_order')
+                    ->orderBy('s.code')
+                    ->get();
+            }
+        }
 
         $next = $this->nextCurriculumTerm($user->id, $programKey);
 
@@ -309,6 +377,7 @@ class StudentEnrollmentController extends Controller
         }
 
         $periodId = $this->periodIdFromRequest($request);
+        $this->hydrateMissingOfferings($user->id, (int) $periodId, ['draft']);
 
         $rows = DB::table('enrollments as e')
             ->join('courses as c', 'c.id', '=', 'e.course_id')
@@ -349,6 +418,7 @@ class StudentEnrollmentController extends Controller
         }
 
         $periodId = $this->periodIdFromRequest($request);
+        $this->hydrateMissingOfferings($user->id, (int) $periodId, ['unofficial', 'official']);
 
         $rows = DB::table('enrollments as e')
             ->join('courses as c', 'c.id', '=', 'e.course_id')
@@ -521,9 +591,9 @@ class StudentEnrollmentController extends Controller
             }
 
             $offering = $this->findAvailableOffering((int) $course->id, (int) $periodId);
-            if (! $offering) {
+            $offeringId = $offering?->id ? (int) $offering->id : null;
+            if (! $offeringId) {
                 $skippedNoSection[] = $course->code;
-                continue;
             }
 
             $exists = DB::table('enrollments')
@@ -537,15 +607,15 @@ class StudentEnrollmentController extends Controller
                     'user_id' => $user->id,
                     'course_id' => $course->id,
                     'period_id' => $periodId,
-                    'offering_id' => $offering->id,
+                    'offering_id' => $offeringId,
                     'status' => 'draft',
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
                 $addedCount++;
-            } elseif ($exists->status === 'draft' && ! $exists->offering_id) {
+            } elseif ($exists->status === 'draft' && ! $exists->offering_id && $offeringId) {
                 DB::table('enrollments')->where('id', $exists->id)->update([
-                    'offering_id' => $offering->id,
+                    'offering_id' => $offeringId,
                     'updated_at' => now(),
                 ]);
             }
@@ -609,6 +679,7 @@ class StudentEnrollmentController extends Controller
         }
 
         $periodId = $this->periodIdFromRequest($request);
+        $this->hydrateMissingOfferings($user->id, (int) $periodId, ['draft']);
 
         $draftRows = DB::table('enrollments')
             ->where('user_id', $user->id)

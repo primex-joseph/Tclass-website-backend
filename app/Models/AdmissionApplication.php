@@ -28,6 +28,7 @@ class AdmissionApplication extends Model
         'valid_id_path',
         'status',
         'exam_status',
+        'exam_attendance_status',
         'exam_schedule_sent_at',
         'exam_schedule_payload',
         'remarks',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\ContactAutoReplyMail;
+use App\Mail\ContactAdminReplyMail;
 use App\Mail\ContactInquiryMail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -160,5 +161,56 @@ class ContactController extends Controller
             ]);
 
         return response()->json(['message' => 'All messages marked as read.']);
+    }
+
+    public function reply(Request $request, int $id): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'subject' => ['required', 'string', 'max:180'],
+            'message' => ['required', 'string', 'min:3', 'max:5000'],
+        ]);
+
+        $contactMessage = DB::table('contact_messages')->where('id', $id)->first();
+        if (! $contactMessage) {
+            return response()->json(['message' => 'Message not found.'], 404);
+        }
+
+        $targetEmail = trim((string) $contactMessage->email);
+        if ($targetEmail === '') {
+            return response()->json(['message' => 'Recipient email is missing.'], 422);
+        }
+
+        try {
+            Mail::to($targetEmail)->send(
+                new ContactAdminReplyMail(
+                    firstName: (string) $contactMessage->first_name,
+                    lastName: (string) $contactMessage->last_name,
+                    subjectLine: $validated['subject'],
+                    replyBody: $validated['message'],
+                    originalMessage: (string) $contactMessage->message,
+                    repliedBy: (string) ($request->user()->name ?? 'TCLASS Admin')
+                )
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to send reply email. Check SMTP configuration.',
+            ], 500);
+        }
+
+        DB::table('contact_messages')
+            ->where('id', $id)
+            ->update([
+                'is_read' => 1,
+                'read_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        return response()->json([
+            'message' => 'Reply sent successfully.',
+        ]);
     }
 }

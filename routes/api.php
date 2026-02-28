@@ -39,10 +39,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::prefix('admin')->group(function () {
         Route::get('/users', [AdmissionController::class, 'users']);
+        Route::post('/users', [AdmissionController::class, 'createPortalUser']);
         Route::get('/dashboard-stats', [AdmissionController::class, 'dashboardStats']);
+        Route::get('/departments-overview', [AdmissionController::class, 'departmentOverview']);
         Route::get('/contact-messages', [ContactController::class, 'adminMessages']);
         Route::patch('/contact-messages/read-all', [ContactController::class, 'markAllRead']);
         Route::patch('/contact-messages/{id}/read', [ContactController::class, 'markRead']);
+        Route::post('/contact-messages/{id}/reply', [ContactController::class, 'reply']);
         Route::get('/enrollments', [AdminEnrollmentController::class, 'index']);
         Route::patch('/enrollments/{enrollmentId}', [AdminEnrollmentController::class, 'updateStatus']);
         Route::patch('/enrollment-periods/{periodId}/activate', [AdminEnrollmentController::class, 'activatePeriod']);
