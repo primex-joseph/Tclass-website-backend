@@ -96,11 +96,12 @@ class AdmissionController extends Controller
             'enrollment_purposes.*' => ['nullable', 'string', 'max:120'],
             'enrollment_purpose_others' => ['nullable', 'string', 'max:255'],
             'form_data' => ['nullable'],
-            'id_picture' => ['nullable', 'image', 'max:4096'],
-            'one_by_one_picture' => ['nullable', 'image', 'max:4096'],
-            'right_thumbmark' => ['nullable', 'image', 'max:4096'],
-            'birth_certificate' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
-            'valid_id_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
+            'id_picture' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:4096'],
+            'one_by_one_picture' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:4096'],
+            'right_thumbmark' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:4096'],
+            'birth_certificate' => ['nullable', 'file', 'mimes:pdf', 'max:4096'],
+            'valid_id_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:4096'],
+            'valid_id_back_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:4096'],
         ]);
 
         $rawFormData = $validated['form_data'] ?? [];
@@ -156,15 +157,19 @@ class AdmissionController extends Controller
         $enrollmentPurposeOthers = trim((string) ($validated['enrollment_purpose_others'] ?? data_get($formData, 'enrollmentPurposeOthers', '')));
         $normalizedEmail = Str::lower($validated['email']);
 
+        if (! $request->hasFile('valid_id_image')) {
+            return response()->json(['message' => 'Valid ID front image upload is required.'], 422);
+        }
+        if (! $request->hasFile('valid_id_back_image')) {
+            return response()->json(['message' => 'Valid ID back image upload is required.'], 422);
+        }
+
         if ($applicationType === 'vocational') {
             if (! $request->hasFile('birth_certificate')) {
                 return response()->json(['message' => 'Birth certificate upload is required.'], 422);
             }
             if (trim((string) $validIdType) === '') {
                 return response()->json(['message' => 'Valid ID type is required.'], 422);
-            }
-            if (! $request->hasFile('valid_id_image')) {
-                return response()->json(['message' => 'Valid ID upload is required.'], 422);
             }
             if (count($enrollmentPurposes) === 0) {
                 return response()->json(['message' => 'Please select at least one purpose/intention for enrolling.'], 422);
@@ -217,6 +222,9 @@ class AdmissionController extends Controller
                 : null,
             'valid_id_path' => $request->hasFile('valid_id_image')
                 ? $request->file('valid_id_image')->store('admissions/valid-ids', 'public')
+                : null,
+            'valid_id_back_path' => $request->hasFile('valid_id_back_image')
+                ? $request->file('valid_id_back_image')->store('admissions/valid-ids-back', 'public')
                 : null,
             'status' => 'pending',
         ]);

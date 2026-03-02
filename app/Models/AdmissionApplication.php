@@ -26,6 +26,7 @@ class AdmissionApplication extends Model
         'right_thumbmark_path',
         'birth_certificate_path',
         'valid_id_path',
+        'valid_id_back_path',
         'status',
         'exam_status',
         'exam_attendance_status',
