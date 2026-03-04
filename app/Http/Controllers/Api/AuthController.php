@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
@@ -93,71 +92,154 @@ class AuthController extends Controller
         ]);
     }
 
-    public function forgotPassword(Request $request): JsonResponse
+    public function checkForgotPasswordEmail(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => ['required', 'email', 'exists:users,email'],
+            'email' => ['required', 'email'],
         ]);
 
         $user = User::query()->where('email', $validated['email'])->first();
 
-        // Generate reset token
-        $token = Str::random(64);
-        
-        // Store token in password_resets table (create if not exists)
-        DB::table('password_resets')->updateOrInsert(
-            ['email' => $user->email],
-            ['token' => Hash::make($token), 'created_at' => now()]
-        );
-
-        // Send email with reset link (for now, just return the token in response for testing)
-        // In production, send actual email
-        $resetUrl = url("/reset-password?token={$token}&email=" . urlencode($user->email));
+        if (! $user) {
+            return response()->json([
+                'message' => 'No email address found.',
+                'exists' => false,
+            ], 404);
+        }
 
         return response()->json([
-            'message' => 'Password reset link has been sent to your email.',
-            'reset_url' => $resetUrl, // Remove this in production, for testing only
+            'message' => 'Email address found.',
+            'exists' => true,
+            'email' => $user->email,
+        ]);
+    }
+
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $user = User::query()->where('email', $validated['email'])->first();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'No email address found.',
+            ], 404);
+        }
+
+        $code = (string) random_int(100000, 999999);
+
+        DB::table('password_resets')->updateOrInsert(
+            ['email' => $user->email],
+            ['token' => Hash::make($code), 'created_at' => now()]
+        );
+
+        Mail::html(
+            view('emails.password-reset-code', [
+                'name' => $user->name,
+                'code' => $code,
+                'expiresInMinutes' => 10,
+            ])->render(),
+            function ($message) use ($user): void {
+                $message->to($user->email, $user->name)
+                    ->subject('Your TCLASS password reset code');
+            }
+        );
+
+        return response()->json([
+            'message' => 'A 6-digit verification code has been sent to your email.',
+            'email' => $user->email,
+            'expires_in_minutes' => 10,
+        ]);
+    }
+
+    public function verifyResetCode(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'code' => ['required', 'digits:6'],
+        ]);
+
+        $resetRecord = DB::table('password_resets')
+            ->where('email', $validated['email'])
+            ->first();
+
+        if (! $resetRecord) {
+            return response()->json([
+                'message' => 'No reset request found for this email.',
+            ], 404);
+        }
+
+        if (now()->diffInMinutes($resetRecord->created_at) > 10) {
+            DB::table('password_resets')->where('email', $validated['email'])->delete();
+
+            return response()->json([
+                'message' => 'The verification code has expired. Please request a new one.',
+            ], 400);
+        }
+
+        if (! Hash::check($validated['code'], $resetRecord->token)) {
+            return response()->json([
+                'message' => 'Invalid verification code.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Code verified successfully.',
+            'verified' => true,
         ]);
     }
 
     public function resetPassword(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => ['required', 'email', 'exists:users,email'],
-            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'code' => ['required', 'digits:6'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        // Verify token
         $resetRecord = DB::table('password_resets')
             ->where('email', $validated['email'])
             ->first();
 
-        if (! $resetRecord || ! Hash::check($validated['token'], $resetRecord->token)) {
+        if (! $resetRecord) {
             return response()->json([
-                'message' => 'Invalid or expired reset token.',
+                'message' => 'No reset request found for this email.',
+            ], 404);
+        }
+
+        if (now()->diffInMinutes($resetRecord->created_at) > 10) {
+            DB::table('password_resets')->where('email', $validated['email'])->delete();
+
+            return response()->json([
+                'message' => 'The verification code has expired. Please request a new one.',
             ], 400);
         }
 
-        // Check if token is expired (60 minutes)
-        if (now()->diffInMinutes($resetRecord->created_at) > 60) {
+        if (! Hash::check($validated['code'], $resetRecord->token)) {
             return response()->json([
-                'message' => 'Reset token has expired. Please request a new one.',
-            ], 400);
+                'message' => 'Invalid verification code.',
+            ], 422);
         }
 
-        // Update password
         $user = User::query()->where('email', $validated['email'])->first();
+
+        if (! $user) {
+            return response()->json([
+                'message' => 'No email address found.',
+            ], 404);
+        }
+
         $user->update([
             'password' => Hash::make($validated['password']),
             'must_change_password' => false,
         ]);
 
-        // Delete used token
         DB::table('password_resets')->where('email', $validated['email'])->delete();
 
         return response()->json([
-            'message' => 'Password has been reset successfully. You can now log in with your new password.',
+            'message' => 'Password changed successfully. You can now log in with your new password.',
         ]);
     }
 }
