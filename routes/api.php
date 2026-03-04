@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/periods', [StudentEnrollmentController::class, 'periods']);
         Route::get('/curriculum-evaluation', [StudentEnrollmentController::class, 'curriculumEvaluation']);
         Route::get('/courses', [StudentEnrollmentController::class, 'courses']);
+        Route::get('/enrollment-history', [StudentEnrollmentController::class, 'enrollmentHistory']);
         Route::get('/enrollment-offerings', [StudentEnrollmentController::class, 'enrollmentOfferings']);
         Route::get('/enrollments/pre-enlisted', [StudentEnrollmentController::class, 'preEnlisted']);
         Route::get('/enrollments/enrolled-subjects', [StudentEnrollmentController::class, 'enrolledSubjects']);

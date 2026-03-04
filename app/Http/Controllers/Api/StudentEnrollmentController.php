@@ -281,6 +281,66 @@ class StudentEnrollmentController extends Controller
         return response()->json(['courses' => $courses]);
     }
 
+    public function enrollmentHistory(Request $request)
+    {
+        $user = $request->user();
+        if (! $this->ensureRole($user->id, 'student')) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $rows = DB::table('enrollments as e')
+            ->join('enrollment_periods as p', 'p.id', '=', 'e.period_id')
+            ->where('e.user_id', $user->id)
+            ->whereIn('e.status', ['draft', 'unofficial', 'official'])
+            ->select(
+                'e.id',
+                'e.period_id',
+                'e.status',
+                'e.assessed_at',
+                'e.decided_at',
+                'e.updated_at',
+                'p.name as period_name'
+            )
+            ->orderByDesc('p.id')
+            ->orderBy('e.id')
+            ->get()
+            ->groupBy('period_id')
+            ->map(function (Collection $periodRows) {
+                $first = $periodRows->first();
+                $hasOfficial = $periodRows->contains(fn ($row) => $row->status === 'official');
+                $hasUnofficial = $periodRows->contains(fn ($row) => $row->status === 'unofficial');
+                $statusLabel = $hasOfficial
+                    ? 'Officially Enrolled'
+                    : ($hasUnofficial ? 'Unofficially Enrolled' : 'Draft');
+
+                $latestTimestamp = $periodRows
+                    ->flatMap(function ($row) {
+                        return array_filter([
+                            $row->decided_at,
+                            $row->assessed_at,
+                            $row->updated_at,
+                        ]);
+                    })
+                    ->sort()
+                    ->last();
+
+                return [
+                    'period_id' => (int) $first->period_id,
+                    'period_name' => $first->period_name,
+                    'registration_id' => (string) ($periodRows->first()->id ?? '-'),
+                    'registration_date' => $latestTimestamp,
+                    'status_label' => $statusLabel,
+                    'status' => $hasOfficial ? 'official' : ($hasUnofficial ? 'unofficial' : 'draft'),
+                    'docs' => $hasOfficial ? ['COR', 'PRE-REG', 'SOA'] : ['PRE-REG', 'SOA'],
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'history' => $rows,
+        ]);
+    }
+
     public function enrollmentOfferings(Request $request)
     {
         $user = $request->user();
