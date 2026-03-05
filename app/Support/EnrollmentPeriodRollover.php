@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 class EnrollmentPeriodRollover
 {
-    public static function rolloverToNextPeriod(?int $fromPeriodId = null): array
+    public static function rolloverToNextPeriod(?int $fromPeriodId = null, bool $activateNext = false): array
     {
         $active = $fromPeriodId
             ? DB::table('enrollment_periods')->where('id', $fromPeriodId)->first()
@@ -28,7 +28,7 @@ class EnrollmentPeriodRollover
 
         [$nextTerm, $nextStart, $nextEnd] = self::nextTermAndYear($term, $startYear, $endYear);
 
-        DB::transaction(function () use ($nextTerm, $nextStart, $nextEnd, &$nextPeriod) {
+        DB::transaction(function () use ($nextTerm, $nextStart, $nextEnd, $activateNext, &$nextPeriod) {
             self::ensureAcademicYearPeriods($nextStart, $nextEnd);
             $nextName = self::formatPeriodName($nextTerm, $nextStart, $nextEnd);
             $nextPeriod = DB::table('enrollment_periods')->where('name', $nextName)->first();
@@ -37,8 +37,10 @@ class EnrollmentPeriodRollover
                 throw new \RuntimeException('Failed to resolve next enrollment period.');
             }
 
-            DB::table('enrollment_periods')->update(['is_active' => 0, 'updated_at' => now()]);
-            DB::table('enrollment_periods')->where('id', $nextPeriod->id)->update(['is_active' => 1, 'updated_at' => now()]);
+            if ($activateNext) {
+                DB::table('enrollment_periods')->update(['is_active' => 0, 'updated_at' => now()]);
+                DB::table('enrollment_periods')->where('id', $nextPeriod->id)->update(['is_active' => 1, 'updated_at' => now()]);
+            }
         });
 
         return [
@@ -50,6 +52,7 @@ class EnrollmentPeriodRollover
                 'id' => (int) $nextPeriod->id,
                 'name' => (string) $nextPeriod->name,
             ],
+            'activated' => $activateNext,
         ];
     }
 

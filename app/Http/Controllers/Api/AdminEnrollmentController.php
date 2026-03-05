@@ -126,12 +126,16 @@ class AdminEnrollmentController extends Controller
         }
 
         try {
-            $result = EnrollmentPeriodRollover::rolloverToNextPeriod();
+            $activate = (bool) $request->boolean('activate', false);
+            $result = EnrollmentPeriodRollover::rolloverToNextPeriod(null, $activate);
 
             return response()->json([
-                'message' => 'Enrollment period rolled over successfully.',
+                'message' => $activate
+                    ? 'Enrollment period rolled over and activated successfully.'
+                    : 'Next enrollment period prepared. Active term unchanged.',
                 'from' => $result['from'],
                 'to' => $result['to'],
+                'activated' => $result['activated'] ?? false,
             ]);
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
