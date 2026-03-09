@@ -30,6 +30,21 @@ API Base: `http://127.0.0.1:8000/api`
 - Class Scheduling (`/api/admin/scheduling/*`)
 - Contact + admissions
 
+## Route Organization (Current)
+- API routes are split by domain and loaded from `routes/api.php`:
+  - `routes/api/auth.php`
+  - `routes/api/student.php`
+  - `routes/api/admin.php`
+  - `routes/api/admission.php`
+  - `routes/api/contact.php`
+  - `routes/api/scheduling.php`
+- Middleware and endpoints are preserved from the previous monolithic route file.
+
+## CORS (Local Development)
+- CORS config: `config/cors.php`
+- Local frontend origin is allowed for SPA/API communication:
+  - `http://localhost:3000`
+
 ## Scheduling + Curriculum Notes
 - Curriculum is stored in:
   - `curriculum_versions`
