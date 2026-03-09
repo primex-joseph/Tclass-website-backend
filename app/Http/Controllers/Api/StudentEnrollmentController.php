@@ -184,6 +184,102 @@ class StudentEnrollmentController extends Controller
         ]);
     }
 
+    public function dashboardSummary(Request $request)
+    {
+        $user = $request->user();
+        if (! $this->ensureRole($user->id, 'student')) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $programKey = $this->studentProgramKey($user->id);
+        $next = $this->nextCurriculumTerm($user->id, $programKey);
+
+        $evaluationQuery = DB::table('courses as c')
+            ->leftJoin('student_course_results as r', function ($join) use ($user) {
+                $join->on('r.course_id', '=', 'c.id')->where('r.user_id', $user->id);
+            })
+            ->where('c.is_active', 1)
+            ->select(
+                'c.id',
+                'c.units',
+                'r.grade',
+                'r.status as result_status'
+            );
+
+        if ($programKey) {
+            $evaluationQuery->where('c.program_key', $programKey);
+        }
+
+        $evaluationRows = $evaluationQuery->get();
+        $passedRows = $evaluationRows->where('result_status', 'passed');
+        $creditedRows = $evaluationRows->where('result_status', 'credited');
+        $failedRows = $evaluationRows->where('result_status', 'failed');
+        $incompleteRows = $evaluationRows->filter(fn ($row) => $row->result_status === 'incomplete' || $row->result_status === null);
+
+        $gradedRows = $evaluationRows->filter(
+            fn ($row) => is_numeric($row->grade) && in_array($row->result_status, ['passed', 'credited'], true)
+        );
+        $gwaUnits = $gradedRows->sum(fn ($row) => (float) ($row->units ?? 0));
+        $gwaNumerator = $gradedRows->sum(fn ($row) => ((float) ($row->grade ?? 0)) * ((float) ($row->units ?? 0)));
+        $cumulativeGwa = $gwaUnits > 0 ? round($gwaNumerator / $gwaUnits, 4) : null;
+
+        $periodId = $this->activePeriodId();
+        $enrolledRows = collect();
+        $outstandingBalance = 0.0;
+        $pendingPaymentCount = 0;
+
+        if ($periodId) {
+            $this->hydrateMissingOfferings($user->id, (int) $periodId, ['unofficial', 'official']);
+
+            $enrolledRows = DB::table('enrollments as e')
+                ->join('courses as c', 'c.id', '=', 'e.course_id')
+                ->leftJoin('class_offerings as o', 'o.id', '=', 'e.offering_id')
+                ->leftJoin('schedule_sections as ss', 'ss.id', '=', 'o.section_id')
+                ->leftJoin('schedule_teachers as st', 'st.id', '=', 'o.teacher_id')
+                ->leftJoin('schedule_rooms as sr', 'sr.id', '=', 'o.room_id')
+                ->where('e.user_id', $user->id)
+                ->where('e.period_id', $periodId)
+                ->whereIn('e.status', ['unofficial', 'official'])
+                ->select(
+                    'e.id',
+                    'e.status',
+                    'c.code',
+                    'c.title',
+                    'c.units',
+                    'c.tf',
+                    DB::raw('COALESCE(o.schedule_text, c.schedule) as schedule'),
+                    DB::raw('COALESCE(sr.room_code, c.room) as room'),
+                    DB::raw('COALESCE(st.full_name, c.instructor) as instructor'),
+                    DB::raw('COALESCE(ss.section_code, c.section) as section')
+                )
+                ->orderBy('c.code')
+                ->get();
+
+            $pendingPaymentRows = $enrolledRows->where('status', 'unofficial');
+            $pendingPaymentCount = $pendingPaymentRows->count();
+            $outstandingBalance = (float) $pendingPaymentRows->sum(fn ($row) => (float) ($row->tf ?? 0));
+        }
+
+        return response()->json([
+            'program_key' => $programKey,
+            'next_term' => $next,
+            'active_period_id' => $periodId,
+            'stats' => [
+                'enrolled_subjects' => $enrolledRows->count(),
+                'passed' => $passedRows->count(),
+                'failed' => $failedRows->count(),
+                'credited' => $creditedRows->count(),
+                'incomplete' => $incompleteRows->count(),
+                'cumulative_gwa' => $cumulativeGwa,
+            ],
+            'financial' => [
+                'outstanding_balance' => $outstandingBalance,
+                'pending_online_payment_count' => $pendingPaymentCount,
+            ],
+            'enrolled_subjects' => $enrolledRows->values(),
+        ]);
+    }
+
     public function curriculumEvaluation(Request $request)
     {
         $user = $request->user();
