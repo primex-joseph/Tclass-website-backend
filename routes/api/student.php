@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\AdmissionController;
 use App\Http\Controllers\Api\StudentEnrollmentController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('student')->group(function () {
+        Route::get('/profile', [AdmissionController::class, 'studentProfile']);
+        Route::patch('/profile', [AdmissionController::class, 'updateStudentProfile']);
         Route::get('/dashboard-summary', [StudentEnrollmentController::class, 'dashboardSummary']);
         Route::get('/periods', [StudentEnrollmentController::class, 'periods']);
         Route::get('/curriculum-evaluation', [StudentEnrollmentController::class, 'curriculumEvaluation']);

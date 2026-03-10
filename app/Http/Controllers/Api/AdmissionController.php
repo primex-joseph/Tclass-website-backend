@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdmissionController extends Controller
 {
@@ -77,6 +78,16 @@ class AdmissionController extends Controller
         }
 
         return null;
+    }
+
+    private function latestStudentApplication(int $userId): ?AdmissionApplication
+    {
+        return AdmissionApplication::query()
+            ->where('created_user_id', $userId)
+            ->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     public function submit(Request $request): JsonResponse
@@ -780,6 +791,173 @@ class AdmissionController extends Controller
         $user->save();
 
         return response()->json(['message' => 'Password updated successfully.']);
+    }
+
+    public function studentProfile(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertStudent($request)) {
+            return $resp;
+        }
+
+        $user = $request->user();
+        $application = $this->latestStudentApplication($user->id);
+        $formData = is_array($application?->form_data) ? $application->form_data : [];
+
+        return response()->json([
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'student_number' => $user->student_number,
+            ],
+            'application' => $application ? [
+                'id' => $application->id,
+                'application_type' => $application->application_type,
+                'primary_course' => $application->primary_course,
+                'status' => $application->status,
+            ] : null,
+            'profile' => [
+                'last_name' => (string) data_get($formData, 'lastName', ''),
+                'first_name' => (string) data_get($formData, 'firstName', ''),
+                'middle_name' => (string) data_get($formData, 'middleName', ''),
+                'extension_name' => (string) data_get($formData, 'extensionName', ''),
+                'number_street' => (string) data_get($formData, 'numberStreet', ''),
+                'barangay' => (string) data_get($formData, 'barangay', ''),
+                'district' => (string) data_get($formData, 'district', ''),
+                'city_municipality' => (string) data_get($formData, 'cityMunicipality', ''),
+                'province' => (string) data_get($formData, 'province', ''),
+                'region' => (string) data_get($formData, 'region', ''),
+                'email_address' => (string) data_get($formData, 'emailAddress', $application?->email ?? $user->email),
+                'facebook_account' => (string) data_get($formData, 'facebookAccount', $application?->facebook_account ?? ''),
+                'contact_no' => (string) data_get($formData, 'contactNo', $application?->contact_no ?? ''),
+                'nationality' => (string) data_get($formData, 'nationality', ''),
+                'sex' => (string) data_get($formData, 'sex', ''),
+                'birthplace_city' => (string) data_get($formData, 'birthplaceCity', ''),
+                'birthplace_province' => (string) data_get($formData, 'birthplaceProvince', ''),
+                'birthplace_region' => (string) data_get($formData, 'birthplaceRegion', ''),
+                'month_of_birth' => (string) data_get($formData, 'monthOfBirth', ''),
+                'day_of_birth' => (string) data_get($formData, 'dayOfBirth', ''),
+                'year_of_birth' => (string) data_get($formData, 'yearOfBirth', ''),
+            ],
+        ]);
+    }
+
+    public function updateStudentProfile(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertStudent($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'last_name' => ['required', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'middle_name' => ['nullable', 'string', 'max:255'],
+            'extension_name' => ['nullable', 'string', 'max:255'],
+            'number_street' => ['required', 'string', 'max:255'],
+            'barangay' => ['required', 'string', 'max:255'],
+            'district' => ['required', 'string', 'max:255'],
+            'city_municipality' => ['required', 'string', 'max:255'],
+            'province' => ['required', 'string', 'max:255'],
+            'region' => ['required', 'string', 'max:255'],
+            'email_address' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($request->user()->id)],
+            'facebook_account' => ['nullable', 'string', 'max:255'],
+            'contact_no' => ['nullable', 'string', 'max:50'],
+            'nationality' => ['nullable', 'string', 'max:120'],
+            'sex' => ['nullable', 'string', 'max:20'],
+            'birthplace_city' => ['nullable', 'string', 'max:255'],
+            'birthplace_province' => ['nullable', 'string', 'max:255'],
+            'birthplace_region' => ['nullable', 'string', 'max:255'],
+            'month_of_birth' => ['nullable', 'string', 'max:2'],
+            'day_of_birth' => ['nullable', 'string', 'max:2'],
+            'year_of_birth' => ['nullable', 'string', 'max:4'],
+        ]);
+
+        $user = $request->user();
+        $application = $this->latestStudentApplication($user->id);
+
+        $fullName = trim(implode(' ', array_filter([
+            trim((string) $validated['first_name']),
+            trim((string) $validated['middle_name']),
+            trim((string) $validated['last_name']),
+            trim((string) $validated['extension_name']),
+        ])));
+        $normalizedEmail = strtolower(trim((string) $validated['email_address']));
+
+        $user->name = $fullName;
+        $user->email = $normalizedEmail;
+        $user->save();
+
+        if ($application) {
+            $formData = is_array($application->form_data) ? $application->form_data : [];
+            $formData['lastName'] = trim((string) $validated['last_name']);
+            $formData['firstName'] = trim((string) $validated['first_name']);
+            $formData['middleName'] = trim((string) ($validated['middle_name'] ?? ''));
+            $formData['extensionName'] = trim((string) ($validated['extension_name'] ?? ''));
+            $formData['numberStreet'] = trim((string) $validated['number_street']);
+            $formData['barangay'] = trim((string) $validated['barangay']);
+            $formData['district'] = trim((string) $validated['district']);
+            $formData['cityMunicipality'] = trim((string) $validated['city_municipality']);
+            $formData['province'] = trim((string) $validated['province']);
+            $formData['region'] = trim((string) $validated['region']);
+            $formData['emailAddress'] = $normalizedEmail;
+            $formData['facebookAccount'] = trim((string) ($validated['facebook_account'] ?? ''));
+            $formData['contactNo'] = trim((string) ($validated['contact_no'] ?? ''));
+            $formData['nationality'] = trim((string) ($validated['nationality'] ?? ''));
+            $formData['sex'] = trim((string) ($validated['sex'] ?? ''));
+            $formData['birthplaceCity'] = trim((string) ($validated['birthplace_city'] ?? ''));
+            $formData['birthplaceProvince'] = trim((string) ($validated['birthplace_province'] ?? ''));
+            $formData['birthplaceRegion'] = trim((string) ($validated['birthplace_region'] ?? ''));
+            $formData['monthOfBirth'] = trim((string) ($validated['month_of_birth'] ?? ''));
+            $formData['dayOfBirth'] = trim((string) ($validated['day_of_birth'] ?? ''));
+            $formData['yearOfBirth'] = trim((string) ($validated['year_of_birth'] ?? ''));
+
+            $application->full_name = $fullName;
+            $application->email = $normalizedEmail;
+            $application->facebook_account = trim((string) ($validated['facebook_account'] ?? ''));
+            $application->contact_no = trim((string) ($validated['contact_no'] ?? ''));
+            $application->form_data = $formData;
+            $application->save();
+        }
+
+        return response()->json([
+            'message' => 'Student profile updated successfully.',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'student_number' => $user->student_number,
+                'must_change_password' => (bool) $user->must_change_password,
+            ],
+            'application' => $application ? [
+                'id' => $application->id,
+                'application_type' => $application->application_type,
+                'primary_course' => $application->primary_course,
+                'status' => $application->status,
+            ] : null,
+            'profile' => [
+                'last_name' => trim((string) $validated['last_name']),
+                'first_name' => trim((string) $validated['first_name']),
+                'middle_name' => trim((string) ($validated['middle_name'] ?? '')),
+                'extension_name' => trim((string) ($validated['extension_name'] ?? '')),
+                'number_street' => trim((string) $validated['number_street']),
+                'barangay' => trim((string) $validated['barangay']),
+                'district' => trim((string) $validated['district']),
+                'city_municipality' => trim((string) $validated['city_municipality']),
+                'province' => trim((string) $validated['province']),
+                'region' => trim((string) $validated['region']),
+                'email_address' => $normalizedEmail,
+                'facebook_account' => trim((string) ($validated['facebook_account'] ?? '')),
+                'contact_no' => trim((string) ($validated['contact_no'] ?? '')),
+                'nationality' => trim((string) ($validated['nationality'] ?? '')),
+                'sex' => trim((string) ($validated['sex'] ?? '')),
+                'birthplace_city' => trim((string) ($validated['birthplace_city'] ?? '')),
+                'birthplace_province' => trim((string) ($validated['birthplace_province'] ?? '')),
+                'birthplace_region' => trim((string) ($validated['birthplace_region'] ?? '')),
+                'month_of_birth' => trim((string) ($validated['month_of_birth'] ?? '')),
+                'day_of_birth' => trim((string) ($validated['day_of_birth'] ?? '')),
+                'year_of_birth' => trim((string) ($validated['year_of_birth'] ?? '')),
+            ],
+        ]);
     }
 
     public function passwordReminder(Request $request): JsonResponse
