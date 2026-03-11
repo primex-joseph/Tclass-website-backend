@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\Api\AdmissionController;
+use App\Http\Controllers\Api\ProgramCatalogController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/admission/submit', [AdmissionController::class, 'submit']);
+Route::get('/programs/catalog', [ProgramCatalogController::class, 'publicIndex']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('admin')->group(function () {
