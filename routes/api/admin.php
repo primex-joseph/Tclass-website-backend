@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use App\Http\Controllers\Api\AdminCurriculumController;
 use App\Http\Controllers\Api\AdminEnrollmentController;
@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('admin')->group(function () {
         Route::get('/users', [AdmissionController::class, 'users']);
+        Route::get('/students', [AdmissionController::class, 'students']);
         Route::post('/users', [AdmissionController::class, 'createPortalUser']);
         Route::get('/dashboard-stats', [AdmissionController::class, 'dashboardStats']);
         Route::get('/departments-overview', [AdmissionController::class, 'departmentOverview']);
@@ -29,3 +30,4 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/programs/{program}', [ProgramCatalogController::class, 'destroy']);
     });
 });
+

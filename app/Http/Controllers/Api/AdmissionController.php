@@ -90,6 +90,106 @@ class AdmissionController extends Controller
             ->first();
     }
 
+    private function splitFullNameForAdminList(string $fullName): array
+    {
+        $parts = preg_split('/\s+/', trim($fullName)) ?: [];
+        $parts = array_values(array_filter($parts, fn ($value) => trim((string) $value) !== ''));
+
+        if (count($parts) === 0) {
+            return ['first_name' => '', 'last_name' => ''];
+        }
+        if (count($parts) === 1) {
+            return ['first_name' => (string) $parts[0], 'last_name' => ''];
+        }
+
+        $lastName = (string) array_pop($parts);
+        $firstName = trim(implode(' ', $parts));
+
+        return ['first_name' => $firstName, 'last_name' => $lastName];
+    }
+
+    private function toYearLevelLabel(int $yearLevel): string
+    {
+        if ($yearLevel <= 0) {
+            return '';
+        }
+        if ($yearLevel === 1) return '1st Year';
+        if ($yearLevel === 2) return '2nd Year';
+        if ($yearLevel === 3) return '3rd Year';
+        if ($yearLevel === 4) return '4th Year';
+        return $yearLevel . 'th Year';
+    }
+
+    private function normalizeStudentProgramKey(?string $programName): ?string
+    {
+        $value = trim((string) $programName);
+        if ($value === '') {
+            return null;
+        }
+
+        $normalized = Str::upper(Str::slug($value, '_'));
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_starts_with($normalized, 'BACHELOR_OF_SCIENCE_IN_')) {
+            $normalized = 'BS_' . substr($normalized, strlen('BACHELOR_OF_SCIENCE_IN_'));
+        }
+
+        if ($normalized === 'BSIT' || str_contains($normalized, 'INFORMATION_TECHNOLOGY')) {
+            return 'BS_INFORMATION_TECHNOLOGY';
+        }
+
+        return $normalized;
+    }
+
+    private function passedCourseIdsForStudent(int $userId)
+    {
+        return DB::table('student_course_results')
+            ->where('user_id', $userId)
+            ->where('status', 'passed')
+            ->pluck('course_id');
+    }
+
+    private function nextCurriculumTermForStudent(int $userId, ?string $programKey = null): array
+    {
+        $passed = $this->passedCourseIdsForStudent($userId);
+
+        $termsQuery = DB::table('courses')->where('is_active', 1);
+        if ($programKey) {
+            $termsQuery->where('program_key', $programKey);
+        }
+
+        $terms = $termsQuery
+            ->select('year_level', 'semester')
+            ->distinct()
+            ->orderBy('year_level')
+            ->orderBy('semester')
+            ->get();
+
+        foreach ($terms as $term) {
+            $termCoursesQuery = DB::table('courses')
+                ->where('is_active', 1)
+                ->where('year_level', $term->year_level)
+                ->where('semester', $term->semester);
+
+            if ($programKey) {
+                $termCoursesQuery->where('program_key', $programKey);
+            }
+
+            $termCourseIds = $termCoursesQuery->pluck('id');
+            $allPassed = $termCourseIds->every(fn ($courseId) => $passed->contains($courseId));
+            if (! $allPassed) {
+                return ['year_level' => (int) $term->year_level, 'semester' => (int) $term->semester];
+            }
+        }
+
+        $latest = $terms->last();
+        return [
+            'year_level' => (int) ($latest?->year_level ?? 1),
+            'semester' => (int) ($latest?->semester ?? 1),
+        ];
+    }
     public function submit(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -296,6 +396,63 @@ class AdmissionController extends Controller
         ]);
     }
 
+    public function students(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $latestApprovedApplications = DB::table('admission_applications as aa')
+            ->joinSub(
+                DB::table('admission_applications')
+                    ->selectRaw('MAX(id) as id')
+                    ->where('status', 'approved')
+                    ->whereNotNull('created_user_id')
+                    ->groupBy('created_user_id'),
+                'latest_approved',
+                fn ($join) => $join->on('latest_approved.id', '=', 'aa.id')
+            )
+            ->select('aa.created_user_id', 'aa.primary_course', 'aa.gender')
+            ->get()
+            ->keyBy('created_user_id');
+
+        $rows = DB::table('users')
+            ->join('portal_user_roles', function ($join) {
+                $join->on('portal_user_roles.user_id', '=', 'users.id')
+                    ->where('portal_user_roles.role', '=', 'student')
+                    ->where('portal_user_roles.is_active', '=', 1);
+            })
+            ->select('users.id', 'users.name', 'users.email', 'users.student_number')
+            ->orderByDesc('users.id')
+            ->get()
+            ->map(function ($user) use ($latestApprovedApplications) {
+                $application = $latestApprovedApplications->get($user->id);
+                $programName = trim((string) ($application->primary_course ?? ''));
+                $gender = trim((string) ($application->gender ?? ''));
+                $programKey = $this->normalizeStudentProgramKey($programName !== '' ? $programName : null);
+                $nextTerm = $this->nextCurriculumTermForStudent((int) $user->id, $programKey);
+                $yearLevelNumber = (int) ($nextTerm['year_level'] ?? 0);
+                $nameParts = $this->splitFullNameForAdminList((string) $user->name);
+
+                return [
+                    'id' => (int) $user->id,
+                    'first_name' => $nameParts['first_name'] !== '' ? $nameParts['first_name'] : (string) $user->name,
+                    'last_name' => $nameParts['last_name'],
+                    'name' => (string) $user->name,
+                    'email' => (string) $user->email,
+                    'student_number' => (string) ($user->student_number ?? ''),
+                    'course' => $programName !== '' ? $programName : null,
+                    'gender' => $gender !== '' ? $gender : null,
+                    'year_level_number' => $yearLevelNumber > 0 ? $yearLevelNumber : null,
+                    'year_level' => $yearLevelNumber > 0 ? $this->toYearLevelLabel($yearLevelNumber) : null,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'students' => $rows,
+        ]);
+    }
     public function createPortalUser(Request $request): JsonResponse
     {
         if ($resp = $this->assertAdmin($request)) {
@@ -992,3 +1149,4 @@ class AdmissionController extends Controller
         return $password;
     }
 }
+
