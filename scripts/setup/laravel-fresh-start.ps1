@@ -144,7 +144,7 @@ try {
 
 if ($CreateAdmin) {
   Step "Creating admin user"
-  $adminScriptPath = Join-Path (Get-Location).Path "scripts\create-admin-user.ps1"
+  $adminScriptPath = Join-Path (Get-Location).Path "scripts\setup\create-admin-user.ps1"
   if (-not (Test-Path $adminScriptPath)) {
     throw "Missing script: $adminScriptPath"
   }

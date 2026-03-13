@@ -1,10 +1,10 @@
 # Backend Fresh Start Script
 
-Script: `scripts/laravel-fresh-start.ps1`
+Script: `scripts/setup/laravel-fresh-start.ps1`
 
 ## One-command setup
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -Serve
+powershell -ExecutionPolicy Bypass -File .\scripts\setup\laravel-fresh-start.ps1 -DatabaseName tclass_db -DbUser root -DbPassword "" -RootDbUser root -RootDbPassword "" -Seed -CreateAdmin -Serve
 ```
 
 ## What it does
