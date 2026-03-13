@@ -18,7 +18,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Keep existing admin account untouched. Seed only faculty/student dev accounts.
+        $admin = User::query()->updateOrCreate(
+            ['email' => 'admindev@tclass.local'],
+            [
+                'name' => 'Admin Dev',
+                'password' => Hash::make('Admin123!'),
+                'must_change_password' => false,
+            ]
+        );
+
         $faculty = User::query()->updateOrCreate(
             ['email' => 'facultydev@tclass.local'],
             [
@@ -39,6 +47,11 @@ class DatabaseSeeder extends Seeder
         );
 
         if (Schema::hasTable('portal_user_roles')) {
+            DB::table('portal_user_roles')->updateOrInsert(
+                ['user_id' => $admin->id, 'role' => 'admin'],
+                ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+
             DB::table('portal_user_roles')->updateOrInsert(
                 ['user_id' => $faculty->id, 'role' => 'faculty'],
                 ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
@@ -170,4 +183,3 @@ class DatabaseSeeder extends Seeder
         }
     }
 }
-
