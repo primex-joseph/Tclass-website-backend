@@ -96,16 +96,41 @@ class AdmissionController extends Controller
         $parts = array_values(array_filter($parts, fn ($value) => trim((string) $value) !== ''));
 
         if (count($parts) === 0) {
-            return ['first_name' => '', 'last_name' => ''];
+            return [
+                'first_name' => '',
+                'middle_name' => '',
+                'last_name' => '',
+                'extension_name' => '',
+            ];
         }
+
+        $suffixes = ['JR', 'SR', 'II', 'III', 'IV', 'V'];
+        $lastToken = strtoupper(rtrim((string) end($parts), '.'));
+        $extension = '';
+        if (in_array($lastToken, $suffixes, true)) {
+            $extension = (string) array_pop($parts);
+        }
+
+        $firstName = (string) ($parts[0] ?? '');
+
         if (count($parts) === 1) {
-            return ['first_name' => (string) $parts[0], 'last_name' => ''];
+            return [
+                'first_name' => $firstName,
+                'middle_name' => '',
+                'last_name' => '',
+                'extension_name' => $extension,
+            ];
         }
 
-        $lastName = (string) array_pop($parts);
-        $firstName = trim(implode(' ', $parts));
+        $lastName = (string) ($parts[count($parts) - 1] ?? '');
+        $middleName = trim(implode(' ', array_slice($parts, 1, -1)));
 
-        return ['first_name' => $firstName, 'last_name' => $lastName];
+        return [
+            'first_name' => $firstName,
+            'middle_name' => $middleName,
+            'last_name' => $lastName,
+            'extension_name' => $extension,
+        ];
     }
 
     private function toYearLevelLabel(int $yearLevel): string
