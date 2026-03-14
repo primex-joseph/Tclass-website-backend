@@ -42,8 +42,14 @@ API Base: `http://127.0.0.1:8000/api`
 
 ## CORS (Local Development)
 - CORS config: `config/cors.php`
-- Local frontend origin is allowed for SPA/API communication:
-  - `http://localhost:3000`
+- Configure allowed SPA origins in `.env`:
+  - `CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
+- `FRONTEND_URL` remains the primary frontend URL.
+- `SANCTUM_STATEFUL_DOMAINS` should include local SPA hosts for cookie auth.
+- When changing frontend origin(s), run:
+  - `php artisan optimize:clear`
+- If MySQL is not running yet, use:
+  - `php artisan config:clear`
 
 ## Scheduling + Curriculum Notes
 - Curriculum is stored in:

@@ -20,6 +20,8 @@ php artisan key:generate
 ```env
 APP_URL=http://127.0.0.1:8000
 FRONTEND_URL=http://localhost:3000
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+SANCTUM_STATEFUL_DOMAINS=localhost:3000,127.0.0.1:3000
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -27,6 +29,15 @@ DB_PORT=3306
 DB_DATABASE=tclass_db
 DB_USERNAME=root
 DB_PASSWORD=
+```
+
+If frontend origin changes, update `CORS_ALLOWED_ORIGINS` (comma-separated) then clear cached config:
+```powershell
+php artisan optimize:clear
+```
+If MySQL is not running yet, use:
+```powershell
+php artisan config:clear
 ```
 
 ## 4) DB + Storage
