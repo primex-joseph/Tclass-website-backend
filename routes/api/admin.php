@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdminCurriculumController;
 use App\Http\Controllers\Api\AdminEnrollmentController;
 use App\Http\Controllers\Api\AdmissionController;
+use App\Http\Controllers\Api\FacultyRbacController;
 use App\Http\Controllers\Api\ProgramCatalogController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/users', [AdmissionController::class, 'createPortalUser']);
         Route::get('/dashboard-stats', [AdmissionController::class, 'dashboardStats']);
         Route::get('/departments-overview', [AdmissionController::class, 'departmentOverview']);
+        Route::get('/faculty/positions', [FacultyRbacController::class, 'positions']);
+        Route::get('/rbac/faculty', [FacultyRbacController::class, 'index']);
+        Route::patch('/rbac/faculty/templates/{templateKey}', [FacultyRbacController::class, 'updateTemplate']);
+        Route::patch('/rbac/faculty/users/{userId}', [FacultyRbacController::class, 'updateUser']);
 
         Route::get('/enrollments', [AdminEnrollmentController::class, 'index']);
         Route::patch('/enrollments/{enrollmentId}', [AdminEnrollmentController::class, 'updateStatus']);
@@ -30,4 +35,3 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/programs/{program}', [ProgramCatalogController::class, 'destroy']);
     });
 });
-

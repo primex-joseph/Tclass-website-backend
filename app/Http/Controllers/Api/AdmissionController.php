@@ -9,6 +9,7 @@ use App\Mail\EntranceExamScheduleMail;
 use App\Mail\PortalUserCredentialsMail;
 use App\Models\AdmissionApplication;
 use App\Models\User;
+use App\Support\FacultyWorkflow;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -404,6 +405,8 @@ class AdmissionController extends Controller
                     ->where('portal_user_roles.role', '=', $role)
                     ->where('portal_user_roles.is_active', '=', 1);
             })
+            ->leftJoin('faculty_profiles as fp', 'fp.user_id', '=', 'users.id')
+            ->leftJoin('faculty_positions as pos', 'pos.id', '=', 'fp.position_id')
             ->select([
                 'users.id',
                 'users.name',
@@ -412,6 +415,10 @@ class AdmissionController extends Controller
                 'users.created_at',
                 DB::raw("'" . $role . "' as role"),
                 DB::raw("'active' as status"),
+                'fp.employee_id',
+                'fp.department',
+                'fp.position_id',
+                DB::raw('pos.title as position'),
             ])
             ->orderByDesc('users.id')
             ->get();
@@ -490,16 +497,32 @@ class AdmissionController extends Controller
             'role' => ['nullable', 'in:student,faculty,admin'],
             'password' => ['nullable', 'string', 'min:8', 'max:120'],
             'is_active' => ['nullable', 'boolean'],
+            'employee_id' => ['nullable', 'string', 'max:80'],
+            'department' => ['nullable', 'string', 'max:160'],
+            'position_id' => ['nullable', 'integer', 'exists:faculty_positions,id'],
         ]);
 
         $role = strtolower((string) ($validated['role'] ?? 'admin'));
         $normalizedEmail = Str::lower((string) $validated['email']);
         $name = trim((string) $validated['name']);
         $isActive = array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true;
+        $employeeId = trim((string) ($validated['employee_id'] ?? ''));
+        $department = trim((string) ($validated['department'] ?? ''));
+        $positionId = ! empty($validated['position_id']) ? (int) $validated['position_id'] : null;
 
         if (User::query()->where('email', $normalizedEmail)->exists()) {
             return response()->json([
                 'message' => 'A user with this email already exists.',
+            ], 422);
+        }
+
+        if (
+            $role === 'faculty' &&
+            $employeeId !== '' &&
+            DB::table('faculty_profiles')->where('employee_id', $employeeId)->exists()
+        ) {
+            return response()->json([
+                'message' => 'A faculty profile with this employee ID already exists.',
             ], 422);
         }
 
@@ -526,6 +549,29 @@ class AdmissionController extends Controller
             ['is_active' => $isActive ? 1 : 0, 'created_at' => now(), 'updated_at' => now()]
         );
 
+        $positionTitle = null;
+        $templateHint = null;
+        if ($role === 'faculty') {
+            $positionTitle = $positionId
+                ? DB::table('faculty_positions')->where('id', $positionId)->value('title')
+                : null;
+
+            DB::table('faculty_profiles')->updateOrInsert(
+                ['user_id' => $user->id],
+                [
+                    'employee_id' => $employeeId !== '' ? $employeeId : null,
+                    'department' => $department !== '' ? $department : null,
+                    'position_id' => $positionId,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+
+            FacultyWorkflow::syncPermissionCatalog();
+            $templateHint = FacultyWorkflow::templateFromPosition($positionTitle);
+            FacultyWorkflow::assignTemplate($user, $templateHint);
+        }
+
         $mailWarning = null;
         try {
             Mail::to($normalizedEmail)->send(
@@ -550,10 +596,15 @@ class AdmissionController extends Controller
                 'role' => $role,
                 'status' => $isActive ? 'active' : 'inactive',
                 'created_at' => $user->created_at,
+                'employee_id' => $employeeId !== '' ? $employeeId : null,
+                'department' => $department !== '' ? $department : null,
+                'position_id' => $positionId,
+                'position' => $positionTitle,
             ],
             'credentials_preview' => [
                 'temporary_password' => $generatedPassword,
             ],
+            'template_hint' => $templateHint,
         ], 201);
     }
 
@@ -1174,4 +1225,3 @@ class AdmissionController extends Controller
         return $password;
     }
 }
-
