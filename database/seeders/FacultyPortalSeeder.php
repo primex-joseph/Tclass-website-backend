@@ -6,7 +6,6 @@ use App\Models\User;
 use App\Support\FacultyWorkflow;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 
 class FacultyPortalSeeder extends Seeder
@@ -179,48 +178,18 @@ class FacultyPortalSeeder extends Seeder
             return;
         }
 
-        $studentRows = [
-            ['email' => 'studentdev@tclass.local', 'name' => 'Student Dev', 'student_number' => '25-1-1-1001'],
-            ['email' => 'facultystudent1@tclass.local', 'name' => 'Faculty Student One', 'student_number' => '25-1-1-1002'],
-            ['email' => 'facultystudent2@tclass.local', 'name' => 'Faculty Student Two', 'student_number' => '25-1-1-1003'],
-        ];
+        $studentIds = User::query()
+            ->whereIn('email', [
+                'studentdev@tclass.local',
+                'facultystudent1@tclass.local',
+                'facultystudent2@tclass.local',
+            ])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
-        $studentIds = [];
-        foreach ($studentRows as $row) {
-            $student = User::query()->updateOrCreate(
-                ['email' => $row['email']],
-                [
-                    'name' => $row['name'],
-                    'student_number' => $row['student_number'],
-                    'password' => Hash::make('Student123!'),
-                    'must_change_password' => false,
-                ]
-            );
-
-            DB::table('portal_user_roles')->updateOrInsert(
-                ['user_id' => $student->id, 'role' => 'student'],
-                ['is_active' => 1, 'updated_at' => now(), 'created_at' => now()]
-            );
-
-            if (Schema::hasTable('admission_applications')) {
-                DB::table('admission_applications')->updateOrInsert(
-                    ['email' => $student->email, 'status' => 'approved'],
-                    [
-                        'full_name' => $student->name,
-                        'age' => 20,
-                        'gender' => 'Male',
-                        'primary_course' => 'BS Information Technology',
-                        'application_type' => 'admission',
-                        'remarks' => 'Faculty portal seeded student.',
-                        'approved_at' => now(),
-                        'created_user_id' => $student->id,
-                        'updated_at' => now(),
-                        'created_at' => now(),
-                    ]
-                );
-            }
-
-            $studentIds[] = (int) $student->id;
+        if ($studentIds === []) {
+            return;
         }
 
         foreach ($studentIds as $studentIndex => $studentId) {
