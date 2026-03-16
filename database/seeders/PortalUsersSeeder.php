@@ -126,11 +126,21 @@ class PortalUsersSeeder extends Seeder
             if ($positionCode !== '' && $positionByCode->has($positionCode)) {
                 $positionId = (int) $positionByCode->get($positionCode);
             }
+            $employeeId = $profile['employee_id'] ?? null;
+            if ($employeeId) {
+                $collision = DB::table('faculty_profiles')
+                    ->where('employee_id', $employeeId)
+                    ->where('user_id', '!=', $user->id)
+                    ->exists();
+                if ($collision) {
+                    $employeeId = null;
+                }
+            }
 
             DB::table('faculty_profiles')->updateOrInsert(
                 ['user_id' => $user->id],
                 [
-                    'employee_id' => $profile['employee_id'] ?? null,
+                    'employee_id' => $employeeId,
                     'department' => $profile['department'] ?? null,
                     'position_id' => $positionId,
                     'updated_at' => now(),
@@ -189,4 +199,3 @@ class PortalUsersSeeder extends Seeder
         $this->command->newLine();
     }
 }
-

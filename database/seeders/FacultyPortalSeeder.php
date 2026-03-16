@@ -140,6 +140,21 @@ class FacultyPortalSeeder extends Seeder
                 continue;
             }
 
+            $offeringSeed = [
+                'room_id' => $roomId,
+                'schedule_text' => $this->formatScheduleText($row['day'], $row['start'], $row['end']),
+                'capacity' => 40,
+                'is_active' => 1,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ];
+            if (Schema::hasColumn('class_offerings', 'created_by_user_id')) {
+                $offeringSeed['created_by_user_id'] = $faculty->id;
+            }
+            if (Schema::hasColumn('class_offerings', 'updated_by_user_id')) {
+                $offeringSeed['updated_by_user_id'] = $faculty->id;
+            }
+
             DB::table('class_offerings')->updateOrInsert(
                 [
                     'period_id' => $periodId,
@@ -150,14 +165,7 @@ class FacultyPortalSeeder extends Seeder
                     'start_time' => $row['start'],
                     'end_time' => $row['end'],
                 ],
-                [
-                    'room_id' => $roomId,
-                    'schedule_text' => $this->formatScheduleText($row['day'], $row['start'], $row['end']),
-                    'capacity' => 40,
-                    'is_active' => 1,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
+                $offeringSeed
             );
 
             $offeringId = DB::table('class_offerings')
@@ -233,6 +241,32 @@ class FacultyPortalSeeder extends Seeder
                     'created_at' => now(),
                 ]
             );
+        }
+
+        if (Schema::hasTable('scheduling_action_logs')) {
+            foreach ($offeringIds as $offeringRow) {
+                $existing = DB::table('scheduling_action_logs')
+                    ->where('entity_type', 'offering')
+                    ->where('entity_id', $offeringRow['id'])
+                    ->where('action', 'seed_demo')
+                    ->exists();
+                if ($existing) {
+                    continue;
+                }
+
+                DB::table('scheduling_action_logs')->insert([
+                    'entity_type' => 'offering',
+                    'entity_id' => $offeringRow['id'],
+                    'action' => 'seed_demo',
+                    'acted_by_user_id' => $faculty->id,
+                    'offering_id' => $offeringRow['id'],
+                    'period_id' => $periodId,
+                    'note' => 'Seeded sample schedule for registrar calendar demo.',
+                    'acted_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
         }
 
         $enrollmentRows = DB::table('enrollments')

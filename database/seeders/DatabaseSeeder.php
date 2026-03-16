@@ -37,13 +37,41 @@ class DatabaseSeeder extends Seeder
         }
 
         if (Schema::hasTable('schedule_rooms')) {
+            $roomActorId = DB::table('users')
+                ->whereIn('email', ['admindev@tclass.local', 'registrar.faculty@tclass.local'])
+                ->orderBy('id')
+                ->value('id');
+
+            $roomL306A = ['building' => 'L', 'capacity' => 45, 'is_active' => 1, 'updated_at' => now(), 'created_at' => now()];
+            $roomL206 = ['building' => 'L', 'capacity' => 40, 'is_active' => 1, 'updated_at' => now(), 'created_at' => now()];
+            if (Schema::hasColumn('schedule_rooms', 'title')) {
+                $roomL306A['title'] = 'Room 101 - Lecture Hall';
+                $roomL206['title'] = 'Room 206 - Computer Lab';
+            }
+            if (Schema::hasColumn('schedule_rooms', 'description')) {
+                $roomL306A['description'] = 'Projector-ready lecture room with smart board and dual AC.';
+                $roomL206['description'] = 'Laboratory room with 40 desktop seats and wired LAN.';
+            }
+            if (Schema::hasColumn('schedule_rooms', 'icon_key')) {
+                $roomL306A['icon_key'] = 'presentation';
+                $roomL206['icon_key'] = 'monitor';
+            }
+            if (Schema::hasColumn('schedule_rooms', 'created_by_user_id')) {
+                $roomL306A['created_by_user_id'] = $roomActorId;
+                $roomL206['created_by_user_id'] = $roomActorId;
+            }
+            if (Schema::hasColumn('schedule_rooms', 'updated_by_user_id')) {
+                $roomL306A['updated_by_user_id'] = $roomActorId;
+                $roomL206['updated_by_user_id'] = $roomActorId;
+            }
+
             DB::table('schedule_rooms')->updateOrInsert(
                 ['room_code' => 'L306A'],
-                ['building' => 'L', 'capacity' => 45, 'is_active' => 1, 'updated_at' => now(), 'created_at' => now()]
+                $roomL306A
             );
             DB::table('schedule_rooms')->updateOrInsert(
                 ['room_code' => 'L206'],
-                ['building' => 'L', 'capacity' => 40, 'is_active' => 1, 'updated_at' => now(), 'created_at' => now()]
+                $roomL206
             );
         }
 
@@ -94,6 +122,26 @@ class DatabaseSeeder extends Seeder
                     }
                     $startLabel = date('h:i A', strtotime("1970-01-01 {$row['start']}"));
                     $endLabel = date('h:i A', strtotime("1970-01-01 {$row['end']}"));
+                    $scheduleSeed = [
+                        'teacher_id' => $row['teacher_id'],
+                        'room_id' => $row['room_id'],
+                        'schedule_text' => "{$row['day']} {$startLabel} - {$endLabel}",
+                        'capacity' => 40,
+                        'is_active' => 1,
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ];
+                    $scheduleActorId = DB::table('users')
+                        ->whereIn('email', ['admindev@tclass.local', 'registrar.faculty@tclass.local'])
+                        ->orderBy('id')
+                        ->value('id');
+                    if (Schema::hasColumn('class_offerings', 'created_by_user_id')) {
+                        $scheduleSeed['created_by_user_id'] = $scheduleActorId;
+                    }
+                    if (Schema::hasColumn('class_offerings', 'updated_by_user_id')) {
+                        $scheduleSeed['updated_by_user_id'] = $scheduleActorId;
+                    }
+
                     DB::table('class_offerings')->updateOrInsert(
                         [
                             'period_id' => $periodId,
@@ -103,15 +151,7 @@ class DatabaseSeeder extends Seeder
                             'start_time' => $row['start'] . ':00',
                             'end_time' => $row['end'] . ':00',
                         ],
-                        [
-                            'teacher_id' => $row['teacher_id'],
-                            'room_id' => $row['room_id'],
-                            'schedule_text' => "{$row['day']} {$startLabel} - {$endLabel}",
-                            'capacity' => 40,
-                            'is_active' => 1,
-                            'updated_at' => now(),
-                            'created_at' => now(),
-                        ]
+                        $scheduleSeed
                     );
                 }
             }
