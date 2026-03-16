@@ -373,14 +373,37 @@ class FacultyRegistrarScheduleTest extends TestCase
         config()->set('database.connections.mysql.port', env('DB_PORT', 3306));
         config()->set('database.connections.mysql.username', env('DB_USERNAME', 'root'));
         config()->set('database.connections.mysql.password', env('DB_PASSWORD', ''));
-
-        $database = (string) config('database.connections.mysql.database', '');
-        if ($database === '' || $database === ':memory:') {
-            config()->set('database.connections.mysql.database', 'tclass_db');
-        }
+        $testDatabase = env('DB_DATABASE_TEST', 'tclass_test');
+        $this->ensureMysqlDatabaseExists(
+            host: (string) config('database.connections.mysql.host'),
+            port: (int) config('database.connections.mysql.port'),
+            username: (string) config('database.connections.mysql.username'),
+            password: (string) config('database.connections.mysql.password'),
+            database: $testDatabase,
+        );
+        config()->set('database.connections.mysql.database', $testDatabase);
 
         DB::purge('mysql');
         DB::reconnect('mysql');
+    }
+
+    private function ensureMysqlDatabaseExists(
+        string $host,
+        int $port,
+        string $username,
+        string $password,
+        string $database
+    ): void {
+        $pdo = new \PDO(
+            sprintf('mysql:host=%s;port=%d;charset=utf8mb4', $host, $port),
+            $username,
+            $password,
+            [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            ]
+        );
+
+        $pdo->exec(sprintf('CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', str_replace('`', '``', $database)));
     }
 
     private function seedFixtureData(): void
@@ -809,6 +832,24 @@ class FacultyRegistrarScheduleTest extends TestCase
                 $table->unsignedBigInteger('updated_by_user_id')->nullable();
                 $table->timestamps();
             });
+        } else {
+            Schema::table('schedule_rooms', function (Blueprint $table) {
+                if (! Schema::hasColumn('schedule_rooms', 'title')) {
+                    $table->string('title')->nullable()->after('room_code');
+                }
+                if (! Schema::hasColumn('schedule_rooms', 'description')) {
+                    $table->text('description')->nullable()->after('title');
+                }
+                if (! Schema::hasColumn('schedule_rooms', 'icon_key')) {
+                    $table->string('icon_key')->nullable()->after('description');
+                }
+                if (! Schema::hasColumn('schedule_rooms', 'created_by_user_id')) {
+                    $table->unsignedBigInteger('created_by_user_id')->nullable()->after('is_active');
+                }
+                if (! Schema::hasColumn('schedule_rooms', 'updated_by_user_id')) {
+                    $table->unsignedBigInteger('updated_by_user_id')->nullable()->after('created_by_user_id');
+                }
+            });
         }
 
         if (! Schema::hasTable('class_offerings')) {
@@ -828,6 +869,15 @@ class FacultyRegistrarScheduleTest extends TestCase
                 $table->unsignedBigInteger('created_by_user_id')->nullable();
                 $table->unsignedBigInteger('updated_by_user_id')->nullable();
                 $table->timestamps();
+            });
+        } else {
+            Schema::table('class_offerings', function (Blueprint $table) {
+                if (! Schema::hasColumn('class_offerings', 'created_by_user_id')) {
+                    $table->unsignedBigInteger('created_by_user_id')->nullable()->after('is_active');
+                }
+                if (! Schema::hasColumn('class_offerings', 'updated_by_user_id')) {
+                    $table->unsignedBigInteger('updated_by_user_id')->nullable()->after('created_by_user_id');
+                }
             });
         }
 
