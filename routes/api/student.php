@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdmissionController;
+use App\Http\Controllers\Api\QuizController;
 use App\Http\Controllers\Api\StudentEnrollmentController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,5 +22,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/enrollments/{enrollmentId}', [StudentEnrollmentController::class, 'remove']);
         Route::delete('/enrollments', [StudentEnrollmentController::class, 'clearDraft']);
         Route::post('/enrollments/assess', [StudentEnrollmentController::class, 'assess']);
+        Route::get('/quizzes/link/{token}', [QuizController::class, 'validateLink']);
+        Route::post('/quizzes/link/{token}/start', [QuizController::class, 'startAttempt']);
+        Route::post('/quizzes/attempts/{attemptId}/submit', [QuizController::class, 'submitAttempt']);
     });
 });

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AdminEnrollmentController;
 use App\Http\Controllers\Api\AdmissionController;
 use App\Http\Controllers\Api\FacultyRbacController;
 use App\Http\Controllers\Api\ProgramCatalogController;
+use App\Http\Controllers\Api\QuizController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -33,5 +34,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/programs', [ProgramCatalogController::class, 'store']);
         Route::patch('/programs/{program}', [ProgramCatalogController::class, 'update']);
         Route::delete('/programs/{program}', [ProgramCatalogController::class, 'destroy']);
+
+        Route::get('/quizzes', [QuizController::class, 'index'])->defaults('scope', 'admin');
+        Route::post('/quizzes', [QuizController::class, 'store'])->defaults('scope', 'admin');
+        Route::get('/quizzes/creators', [QuizController::class, 'creators'])->defaults('scope', 'admin');
+        Route::get('/quizzes/offerings/catalog', [QuizController::class, 'offeringsCatalog'])->defaults('scope', 'admin');
+        Route::get('/quizzes/entrance/courses', [QuizController::class, 'entranceCourses'])->defaults('scope', 'admin');
+        Route::get('/quizzes/{id}', [QuizController::class, 'show'])->defaults('scope', 'admin');
+        Route::patch('/quizzes/{id}', [QuizController::class, 'update'])->defaults('scope', 'admin');
+        Route::delete('/quizzes/{id}', [QuizController::class, 'destroy'])->defaults('scope', 'admin');
+        Route::post('/quizzes/{id}/publish', [QuizController::class, 'publish'])->defaults('scope', 'admin');
+        Route::get('/quizzes/{quizId}/items', [QuizController::class, 'listItems'])->defaults('scope', 'admin');
+        Route::post('/quizzes/{quizId}/items', [QuizController::class, 'storeItem'])->defaults('scope', 'admin');
+        Route::patch('/quizzes/{quizId}/items/{itemId}', [QuizController::class, 'updateItem'])->defaults('scope', 'admin');
+        Route::delete('/quizzes/{quizId}/items/{itemId}', [QuizController::class, 'destroyItem'])->defaults('scope', 'admin');
+        Route::get('/quizzes/{quizId}/results', [QuizController::class, 'listResults'])->defaults('scope', 'admin');
+        Route::get('/quizzes/{quizId}/results/{attemptId}', [QuizController::class, 'resultDetail'])->defaults('scope', 'admin');
+        Route::get('/quizzes/{quizId}/preview', [QuizController::class, 'preview'])->defaults('scope', 'admin');
+        Route::post('/quizzes/{quizId}/preview/submit', [QuizController::class, 'previewSubmit'])->defaults('scope', 'admin');
     });
 });

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\AdmissionApprovedMail;
 use App\Mail\AdmissionRejectedMail;
 use App\Mail\EntranceExamScheduleMail;
+use App\Mail\EntranceQuizInviteMail;
 use App\Mail\PortalUserCredentialsMail;
 use App\Models\AdmissionApplication;
 use App\Models\User;
@@ -67,6 +68,16 @@ class AdmissionController extends Controller
     {
         if ($this->currentRole($request) !== 'admin') {
             return response()->json(['message' => 'Forbidden. Admin role required.'], 403);
+        }
+
+        return null;
+    }
+
+    private function assertStaff(Request $request): ?JsonResponse
+    {
+        $role = $this->currentRole($request);
+        if (! in_array($role, ['admin', 'faculty'], true)) {
+            return response()->json(['message' => 'Forbidden. Admin or faculty role required.'], 403);
         }
 
         return null;
@@ -921,6 +932,8 @@ class AdmissionController extends Controller
         }
 
         $validated = $request->validate([
+            'exam_quiz_id' => ['required', 'integer', 'min:1', 'exists:quizzes,id'],
+            'exam_quiz_title' => ['nullable', 'string', 'max:180'],
             'subject' => ['nullable', 'string', 'max:180'],
             'intro_message' => ['nullable', 'string', 'max:1000'],
             'exam_date' => ['required', 'string', 'max:120'],
@@ -951,6 +964,8 @@ class AdmissionController extends Controller
         $intro = trim((string) ($validated['intro_message'] ?? 'You have been invited to take the entrance examination for your application at TCLASS.'));
 
         $payload = [
+            'exam_quiz_id' => (int) $validated['exam_quiz_id'],
+            'exam_quiz_title' => isset($validated['exam_quiz_title']) ? trim((string) $validated['exam_quiz_title']) : null,
             'subject' => $subject,
             'intro_message' => $intro,
             'exam_date' => $validated['exam_date'],
@@ -994,6 +1009,372 @@ class AdmissionController extends Controller
         return response()->json([
             'message' => 'Exam schedule invitation sent successfully.',
             'application' => $application->fresh(),
+        ]);
+    }
+
+    public function entranceApprovedApplicants(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertStaff($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'course' => ['nullable', 'string', 'max:255'],
+            'application_type' => ['nullable', Rule::in(['admission', 'vocational', 'all'])],
+            'with_student_account' => ['nullable', 'boolean'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $q = trim((string) ($validated['q'] ?? ''));
+        $course = trim((string) ($validated['course'] ?? ''));
+        $applicationType = (string) ($validated['application_type'] ?? 'admission');
+        $withStudentAccount = array_key_exists('with_student_account', $validated)
+            ? (bool) $validated['with_student_account']
+            : true;
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? 25);
+
+        $query = AdmissionApplication::query()
+            ->from('admission_applications as aa')
+            ->leftJoin('users as su', DB::raw('LOWER(su.email)'), '=', DB::raw('LOWER(aa.email)'))
+            ->leftJoin('portal_user_roles as pur', function ($join) {
+                $join->on('pur.user_id', '=', 'su.id')
+                    ->where('pur.role', '=', 'student')
+                    ->where('pur.is_active', '=', 1);
+            })
+            ->where('aa.status', 'approved');
+
+        if ($applicationType !== 'all') {
+            $query->where('aa.application_type', $applicationType);
+        }
+
+        if ($course !== '') {
+            $query->where('aa.primary_course', $course);
+        }
+
+        if ($q !== '') {
+            $query->where(function ($nested) use ($q) {
+                $nested
+                    ->where('aa.full_name', 'like', '%' . $q . '%')
+                    ->orWhere('aa.email', 'like', '%' . $q . '%')
+                    ->orWhere('aa.primary_course', 'like', '%' . $q . '%');
+            });
+        }
+
+        if ($withStudentAccount) {
+            $query->whereNotNull('pur.user_id');
+        }
+
+        $paginator = $query
+            ->select([
+                'aa.id',
+                'aa.full_name',
+                'aa.email',
+                'aa.primary_course',
+                'aa.application_type',
+                'aa.status',
+                'aa.approved_at',
+                'aa.exam_schedule_sent_at',
+                'aa.exam_status',
+                'aa.exam_attendance_status',
+                DB::raw('CASE WHEN pur.user_id IS NULL THEN 0 ELSE 1 END as has_student_account'),
+            ])
+            ->orderByDesc('aa.approved_at')
+            ->orderByDesc('aa.id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $items = collect($paginator->items())->map(function ($row) {
+            $payload = null;
+            if (is_array($row->exam_schedule_payload)) {
+                $payload = $row->exam_schedule_payload;
+            } elseif (is_string($row->exam_schedule_payload) && trim($row->exam_schedule_payload) !== '') {
+                $decoded = json_decode($row->exam_schedule_payload, true);
+                $payload = is_array($decoded) ? $decoded : null;
+            }
+
+            return [
+                'id' => (int) $row->id,
+                'full_name' => (string) $row->full_name,
+                'email' => (string) $row->email,
+                'primary_course' => (string) ($row->primary_course ?? ''),
+                'application_type' => (string) ($row->application_type ?? 'admission'),
+                'status' => (string) ($row->status ?? 'approved'),
+                'approved_at' => $row->approved_at ? (string) $row->approved_at : null,
+                'exam_schedule_sent_at' => $row->exam_schedule_sent_at ? (string) $row->exam_schedule_sent_at : null,
+                'exam_status' => $row->exam_status ? (string) $row->exam_status : null,
+                'exam_attendance_status' => $row->exam_attendance_status ? (string) $row->exam_attendance_status : null,
+                'has_student_account' => (bool) $row->has_student_account,
+            ];
+        })->values();
+
+        return response()->json([
+            'items' => $items,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
+    public function entranceScheduledApplicants(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertAdmin($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'course' => ['nullable', 'string', 'max:255'],
+            'application_type' => ['nullable', Rule::in(['admission', 'vocational', 'all'])],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $q = trim((string) ($validated['q'] ?? ''));
+        $course = trim((string) ($validated['course'] ?? ''));
+        $applicationType = (string) ($validated['application_type'] ?? 'all');
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? 50);
+
+        $query = AdmissionApplication::query()
+            ->from('admission_applications as aa')
+            ->leftJoin('users as su', DB::raw('LOWER(su.email)'), '=', DB::raw('LOWER(aa.email)'))
+            ->leftJoin('portal_user_roles as pur', function ($join) {
+                $join->on('pur.user_id', '=', 'su.id')
+                    ->where('pur.role', '=', 'student')
+                    ->where('pur.is_active', '=', 1);
+            })
+            ->where(function ($nested) {
+                $nested
+                    ->whereNotNull('aa.exam_schedule_sent_at')
+                    ->orWhereRaw("JSON_EXTRACT(aa.exam_schedule_payload, '$.sent_at') IS NOT NULL");
+            });
+
+        if ($applicationType !== 'all') {
+            $query->where('aa.application_type', $applicationType);
+        }
+
+        if ($course !== '') {
+            $query->where('aa.primary_course', $course);
+        }
+
+        if ($q !== '') {
+            $query->where(function ($nested) use ($q) {
+                $nested
+                    ->where('aa.full_name', 'like', '%' . $q . '%')
+                    ->orWhere('aa.email', 'like', '%' . $q . '%')
+                    ->orWhere('aa.primary_course', 'like', '%' . $q . '%');
+            });
+        }
+
+        $paginator = $query
+            ->select([
+                'aa.id',
+                'aa.full_name',
+                'aa.email',
+                'aa.primary_course',
+                'aa.application_type',
+                'aa.status',
+                'aa.approved_at',
+                'aa.exam_schedule_sent_at',
+                'aa.exam_schedule_payload',
+                DB::raw('CASE WHEN pur.user_id IS NULL THEN 0 ELSE 1 END as has_student_account'),
+            ])
+            ->orderByDesc('aa.exam_schedule_sent_at')
+            ->orderByDesc('aa.id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $items = collect($paginator->items())->map(function ($row) {
+            $payload = null;
+            if (is_array($row->exam_schedule_payload)) {
+                $payload = $row->exam_schedule_payload;
+            } elseif (is_string($row->exam_schedule_payload) && trim($row->exam_schedule_payload) !== '') {
+                $decoded = json_decode($row->exam_schedule_payload, true);
+                $payload = is_array($decoded) ? $decoded : null;
+            }
+
+            return [
+                'id' => (int) $row->id,
+                'full_name' => (string) $row->full_name,
+                'email' => (string) $row->email,
+                'primary_course' => (string) ($row->primary_course ?? ''),
+                'application_type' => (string) ($row->application_type ?? 'admission'),
+                'status' => (string) ($row->status ?? 'pending'),
+                'approved_at' => $row->approved_at ? (string) $row->approved_at : null,
+                'exam_schedule_sent_at' => $row->exam_schedule_sent_at ? (string) $row->exam_schedule_sent_at : null,
+                'exam_schedule_payload' => $payload,
+                'has_student_account' => (bool) $row->has_student_account,
+            ];
+        })->values();
+
+        return response()->json([
+            'items' => $items,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
+    public function sendEntranceQuizInvites(Request $request): JsonResponse
+    {
+        if ($resp = $this->assertStaff($request)) {
+            return $resp;
+        }
+
+        $validated = $request->validate([
+            'admission_ids' => ['required', 'array', 'min:1'],
+            'admission_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+            'quiz_title' => ['required', 'string', 'max:180'],
+            'quiz_link' => ['required', 'url', 'max:500'],
+            'duration_minutes' => ['required', 'integer', 'min:1', 'max:600'],
+            'expires_at' => ['nullable', 'date'],
+            'subject' => ['nullable', 'string', 'max:180'],
+            'intro_message' => ['nullable', 'string', 'max:1000'],
+            'application_type' => ['nullable', Rule::in(['admission', 'vocational', 'all'])],
+        ]);
+
+        $admissionIds = array_values(array_unique(array_map('intval', $validated['admission_ids'])));
+        $applicationType = (string) ($validated['application_type'] ?? 'all');
+        $role = $this->currentRole($request);
+        $isAdminSender = $role === 'admin';
+        $subject = trim((string) ($validated['subject'] ?? 'Entrance Exam Quiz Invitation - TCLASS'));
+        $intro = trim((string) ($validated['intro_message'] ?? 'You are invited to take your entrance exam online. Sign in with your student credentials before opening the quiz link.'));
+
+        $query = AdmissionApplication::query()
+            ->whereIn('id', $admissionIds)
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id');
+
+        if ($isAdminSender) {
+            $query->where(function ($nested) {
+                $nested
+                    ->whereNotNull('exam_schedule_sent_at')
+                    ->orWhereRaw("JSON_EXTRACT(exam_schedule_payload, '$.sent_at') IS NOT NULL");
+            });
+        } else {
+            $query->where('status', 'approved');
+        }
+
+        if ($applicationType !== 'all') {
+            $query->where('application_type', $applicationType);
+        }
+
+        $applications = $query->get();
+        if ($applications->isEmpty()) {
+            $message = $isAdminSender
+                ? 'No scheduled applicants matched your selection.'
+                : 'No approved applicants matched your selection.';
+            return response()->json(['message' => $message], 422);
+        }
+
+        $sent = 0;
+        $failed = 0;
+        $results = [];
+
+        foreach ($applications as $application) {
+            $email = trim((string) ($application->email ?? ''));
+            if ($email === '') {
+                $failed += 1;
+                $results[] = [
+                    'id' => (int) $application->id,
+                    'email' => null,
+                    'sent' => false,
+                    'reason' => 'Applicant email is missing.',
+                ];
+                continue;
+            }
+
+            if (! $isAdminSender) {
+                $studentUser = User::query()
+                    ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
+                    ->first();
+
+                $hasStudentRole = $studentUser
+                    ? DB::table('portal_user_roles')
+                        ->where('user_id', $studentUser->id)
+                        ->where('role', 'student')
+                        ->where('is_active', 1)
+                        ->exists()
+                    : false;
+
+                if (! $hasStudentRole) {
+                    $failed += 1;
+                    $results[] = [
+                        'id' => (int) $application->id,
+                        'email' => $email,
+                        'sent' => false,
+                        'reason' => 'Student credentials are not active for this applicant.',
+                    ];
+                    continue;
+                }
+            }
+
+            try {
+                Mail::to($email)->send(
+                    new EntranceQuizInviteMail(
+                        fullName: (string) ($application->full_name ?? 'Applicant'),
+                        course: (string) ($application->primary_course ?? 'Unassigned Program'),
+                        subjectLine: $subject,
+                        introMessage: $intro,
+                        quizTitle: (string) $validated['quiz_title'],
+                        quizLink: (string) $validated['quiz_link'],
+                        durationMinutes: (int) $validated['duration_minutes'],
+                        expiresAt: $validated['expires_at'] ?? null,
+                    )
+                );
+
+                $sent += 1;
+                $results[] = [
+                    'id' => (int) $application->id,
+                    'email' => $email,
+                    'sent' => true,
+                    'reason' => null,
+                ];
+
+                $existingPayload = is_array($application->exam_schedule_payload)
+                    ? $application->exam_schedule_payload
+                    : [];
+                $existingPayload['entrance_quiz_invite'] = [
+                    'subject' => $subject,
+                    'intro_message' => $intro,
+                    'quiz_title' => (string) $validated['quiz_title'],
+                    'quiz_link' => (string) $validated['quiz_link'],
+                    'duration_minutes' => (int) $validated['duration_minutes'],
+                    'expires_at' => isset($validated['expires_at']) ? (string) $validated['expires_at'] : null,
+                    'sent_by' => $request->user()?->id,
+                    'sent_at' => now()->toISOString(),
+                ];
+                $application->update([
+                    'exam_schedule_sent_at' => now(),
+                    'exam_schedule_payload' => $existingPayload,
+                ]);
+            } catch (\Throwable $e) {
+                $failed += 1;
+                $results[] = [
+                    'id' => (int) $application->id,
+                    'email' => $email,
+                    'sent' => false,
+                    'reason' => 'Failed to send email.',
+                ];
+            }
+        }
+
+        $message = $failed > 0
+            ? "Entrance quiz invites sent: {$sent}. Failed: {$failed}."
+            : "Entrance quiz invites sent to {$sent} selected applicant(s).";
+
+        return response()->json([
+            'message' => $message,
+            'sent_count' => $sent,
+            'failed_count' => $failed,
+            'results' => $results,
         ]);
     }
 
@@ -1225,3 +1606,4 @@ class AdmissionController extends Controller
         return $password;
     }
 }
+

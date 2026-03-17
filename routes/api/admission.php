@@ -14,6 +14,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/admissions/{id}/reject', [AdmissionController::class, 'reject']);
         Route::patch('/admissions/{id}/exam-status', [AdmissionController::class, 'updateExamStatus']);
         Route::post('/admissions/{id}/send-exam-schedule', [AdmissionController::class, 'sendExamSchedule']);
+        Route::get('/quizzes/entrance/approved-applicants', [AdmissionController::class, 'entranceApprovedApplicants']);
+        Route::get('/quizzes/entrance/scheduled-applicants', [AdmissionController::class, 'entranceScheduledApplicants']);
+        Route::post('/quizzes/entrance/send-invites', [AdmissionController::class, 'sendEntranceQuizInvites']);
+    });
+
+    Route::prefix('faculty')->group(function () {
+        Route::get('/quizzes/entrance/approved-applicants', [AdmissionController::class, 'entranceApprovedApplicants']);
+        Route::post('/quizzes/entrance/send-invites', [AdmissionController::class, 'sendEntranceQuizInvites']);
     });
 
     Route::prefix('student')->group(function () {
