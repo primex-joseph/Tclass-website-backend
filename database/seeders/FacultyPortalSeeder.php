@@ -19,6 +19,7 @@ class FacultyPortalSeeder extends Seeder
         FacultyWorkflow::syncPermissionCatalog();
         $this->seedPositions();
         $this->seedFacultyDevProfile();
+        $this->seedRegistrarProfile();
         $this->seedFacultyStudentsAndOfferings();
         $this->assignTemplatesToFacultyUsers();
     }
@@ -92,6 +93,45 @@ class FacultyPortalSeeder extends Seeder
             [
                 'employee_id' => '19-00123',
                 'department' => 'College of Information Technology',
+                'position_id' => $positionId ?: null,
+                'schedule_teacher_id' => $teacherId ?: null,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+    }
+
+    private function seedRegistrarProfile(): void
+    {
+        $registrar = User::query()->where('email', 'registrar.faculty@tclass.local')->first();
+        if (! $registrar) {
+            return;
+        }
+
+        $positionId = DB::table('faculty_positions')->where('code', 'registrar')->value('id');
+
+        $teacherId = null;
+        if (Schema::hasTable('schedule_teachers')) {
+            DB::table('schedule_teachers')->updateOrInsert(
+                ['email' => $registrar->email],
+                [
+                    'user_id' => $registrar->id,
+                    'employee_code' => 'REG-0001',
+                    'full_name' => 'Registrar Faculty',
+                    'is_active' => 1,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+
+            $teacherId = DB::table('schedule_teachers')->where('email', $registrar->email)->value('id');
+        }
+
+        DB::table('faculty_profiles')->updateOrInsert(
+            ['user_id' => $registrar->id],
+            [
+                'employee_id' => 'REG-0001',
+                'department' => 'Office of the Registrar',
                 'position_id' => $positionId ?: null,
                 'schedule_teacher_id' => $teacherId ?: null,
                 'updated_at' => now(),
