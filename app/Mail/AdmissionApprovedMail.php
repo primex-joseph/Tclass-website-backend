@@ -17,6 +17,8 @@ class AdmissionApprovedMail extends Mailable
         public string $fullName,
         public string $studentNumber,
         public ?string $temporaryPassword = null,
+        public ?int $score = null,
+        public ?int $total = null,
     ) {
     }
 
@@ -39,6 +41,8 @@ class AdmissionApprovedMail extends Mailable
                 'fullName' => $this->fullName,
                 'studentNumber' => $this->studentNumber,
                 'temporaryPassword' => $this->temporaryPassword,
+                'score' => $this->score,
+                'total' => $this->total,
             ],
         );
     }

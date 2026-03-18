@@ -776,12 +776,48 @@ class AdmissionController extends Controller
         }
 
         $existingUser = User::query()->where('email', $application->email)->first();
+        
+        $temporaryPassword = $this->generateTemporaryPassword();
+        $studentNumber = null;
+        $score = null;
+        $total = null;
+
+        $attempt = \App\Models\QuizAttempt::query()
+            ->where('student_admission_id', $application->id)
+            ->whereNotNull('submitted_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $attempt && $existingUser) {
+            $attempt = \App\Models\QuizAttempt::query()
+                ->where('student_user_id', $existingUser->id)
+                ->whereNotNull('submitted_at')
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        if ($attempt) {
+            $score = $attempt->score;
+            $total = $attempt->total;
+        }
+
         if ($existingUser) {
-            // Reuse the existing account (e.g. temporary account created during quiz invite)
+            $studentNumber = $existingUser->student_number ?? $this->generateStudentNumber();
+            
+            $existingUser->update([
+                'student_number' => $studentNumber,
+                'password' => Hash::make($temporaryPassword),
+                'must_change_password' => true,
+            ]);
+
             DB::table('portal_user_roles')->updateOrInsert(
                 ['user_id' => $existingUser->id, 'role' => 'student'],
                 ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
             );
+
+            if (method_exists($existingUser, 'tokens')) {
+                $existingUser->tokens()->delete();
+            }
 
             $application->update([
                 'status' => 'approved',
@@ -795,8 +831,10 @@ class AdmissionController extends Controller
                 Mail::to($application->email)->send(
                     new AdmissionApprovedMail(
                         fullName: $application->full_name,
-                        studentNumber: (string) ($existingUser->student_number ?? ''),
-                        temporaryPassword: null
+                        studentNumber: $studentNumber,
+                        temporaryPassword: $temporaryPassword,
+                        score: $score,
+                        total: $total
                     )
                 );
             } catch (\Throwable $e) {
@@ -804,17 +842,16 @@ class AdmissionController extends Controller
             }
 
             return response()->json([
-                'message' => 'Admission approved (existing account linked).',
+                'message' => 'Admission approved and new official login credentials generated.',
                 'warning' => $mailWarning,
                 'credentials_preview' => [
-                    'student_number' => (string) ($existingUser->student_number ?? ''),
-                    'temporary_password' => null,
+                    'student_number' => $studentNumber,
+                    'temporary_password' => $temporaryPassword,
                 ],
             ]);
         }
 
         $studentNumber = $this->generateStudentNumber();
-        $temporaryPassword = $this->generateTemporaryPassword();
 
         $user = User::query()->create([
             'name' => $application->full_name,
@@ -842,7 +879,9 @@ class AdmissionController extends Controller
                 new AdmissionApprovedMail(
                     fullName: $application->full_name,
                     studentNumber: $studentNumber,
-                    temporaryPassword: $temporaryPassword
+                    temporaryPassword: $temporaryPassword,
+                    score: $score,
+                    total: $total
                 )
             );
         } catch (\Throwable $e) {
@@ -850,7 +889,7 @@ class AdmissionController extends Controller
         }
 
         return response()->json([
-            'message' => 'Admission approved and credentials sent via email.',
+            'message' => 'Admission approved and applicant account created.',
             'warning' => $mailWarning,
             'credentials_preview' => [
                 'student_number' => $studentNumber,
@@ -1330,8 +1369,21 @@ class AdmissionController extends Controller
                 ->first();
 
             if ($existingUser) {
-                // User already exists (admin, faculty, or student) — do NOT touch their roles.
-                // Just send the email; they already have credentials to log in.
+                // If the user already exists but does NOT have any approved admission applications,
+                // treating them as a temporary applicant who might be retaking the exam. 
+                // We generate a NEW temporary password and send it to them.
+                $hasApprovedApplication = AdmissionApplication::query()
+                    ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
+                    ->where('status', 'approved')
+                    ->exists();
+                
+                if (! $hasApprovedApplication) {
+                    $temporaryPassword = $this->generateTemporaryPassword();
+                    $existingUser->update([
+                        'password' => Hash::make($temporaryPassword),
+                        'must_change_password' => true,
+                    ]);
+                }
             } else {
                 // Create a temporary account so the applicant can take the quiz
                 $temporaryPassword = $this->generateTemporaryPassword();

@@ -1270,6 +1270,7 @@ class QuizController extends Controller
                 'shuffle_choices' => (bool) $quiz->shuffle_choices,
                 'published_at' => $quiz->published_at?->toISOString(),
                 'expires_at' => $quiz->expires_at?->toISOString(),
+                'quiz_type' => (string) ($quiz->quiz_type ?? 'regular'),
             ],
             'questions' => $questions,
             'attempt' => $activeAttempt
@@ -1431,6 +1432,69 @@ class QuizController extends Controller
                 'passed' => (bool) $graded['passed'],
             ]);
         });
+
+        // For entrance quizzes: auto-update the admission application's exam_status
+        $isEntrance = $quiz->quiz_type === 'entrance';
+        if ($isEntrance && $attempt->student_admission_id) {
+            $admissionApp = AdmissionApplication::query()->find($attempt->student_admission_id);
+            if ($admissionApp) {
+                $admissionApp->update([
+                    'exam_status' => $graded['passed'] ? 'passed' : 'failed',
+                    'exam_attendance_status' => 'attended',
+                ]);
+            }
+        } elseif ($isEntrance && $attempt->student_user_id) {
+            // Fallback: match by email if student_admission_id was not set
+            $studentUser = User::query()->find($attempt->student_user_id);
+            if ($studentUser) {
+                $admissionApp = AdmissionApplication::query()
+                    ->whereRaw('LOWER(email) = ?', [Str::lower((string) $studentUser->email)])
+                    ->orderByDesc('id')
+                    ->first();
+                if ($admissionApp) {
+                    $admissionApp->update([
+                        'exam_status' => $graded['passed'] ? 'passed' : 'failed',
+                        'exam_attendance_status' => 'attended',
+                    ]);
+                }
+            }
+        }
+
+        // For entrance quizzes: do NOT reveal score/result to the student
+        if ($isEntrance) {
+            // Expire the temporary applicant's password so they cannot login anymore
+            if ($attempt->student_user_id) {
+                $studentUser = User::query()->find($attempt->student_user_id);
+                if ($studentUser) {
+                    $hasApprovedApplication = AdmissionApplication::query()
+                        ->whereRaw('LOWER(email) = ?', [\Illuminate\Support\Str::lower((string) $studentUser->email)])
+                        ->where('status', 'approved')
+                        ->exists();
+                    
+                    if (! $hasApprovedApplication) {
+                        $studentUser->update([
+                            'password' => \Illuminate\Support\Facades\Hash::make(\Illuminate\Support\Str::random(60)),
+                            'must_change_password' => true,
+                        ]);
+                        if (method_exists($studentUser, 'tokens')) {
+                            $studentUser->tokens()->delete();
+                        }
+                    }
+                }
+            }
+
+            return response()->json([
+                'code' => $autoSubmitted ? 'ATTEMPT_TIMEOUT' : 'ENTRANCE_SUBMITTED',
+                'message' => $autoSubmitted
+                    ? 'Time is up. Your entrance exam has been auto-submitted. You will receive an email with your results.'
+                    : 'Your entrance exam has been submitted successfully. You will receive an email with the results of your examination.',
+                'score' => null,
+                'total' => null,
+                'correct_count' => null,
+                'wrong_count' => null,
+                'passed' => null,
+            ]);
+        }
 
         return response()->json([
             'code' => $autoSubmitted ? 'ATTEMPT_TIMEOUT' : null,

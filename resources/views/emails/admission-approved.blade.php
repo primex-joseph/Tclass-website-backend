@@ -20,19 +20,38 @@
                         <td style="padding:28px 24px 24px;">
                             <h2 style="margin:0 0 14px; font-size:22px; color:#0f172a;">Admission Approved</h2>
                             <p style="margin:0 0 12px; font-size:15px; line-height:1.7;">Hello {{ $fullName }},</p>
-                            @if(!empty($temporaryPassword))
-                            <p style="margin:0 0 14px; font-size:15px; line-height:1.7;">
-                                Your admission has been approved. You can now sign in using the credentials below:
-                            </p>
 
+                            {{-- Congratulations on passing the entrance exam --}}
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:18px;">
+                                <tr>
+                                    <td style="background:linear-gradient(135deg,#ecfdf5,#d1fae5); border:1px solid #86efac; border-radius:12px; padding:16px 18px;">
+                                        <p style="margin:0 0 6px; font-size:16px; font-weight:700; color:#166534;">Congratulations! You passed the entrance examination.</p>
+                                        <p style="margin:0 0 8px; font-size:14px; line-height:1.6; color:#15803d;">
+                                            We are pleased to inform you that you have successfully passed your entrance exam and your admission to <strong>TCLASS</strong> has been officially approved.
+                                        </p>
+                                        @if(isset($score) && isset($total))
+                                        <div style="display:inline-block; background:#bbf7d0; border:1px solid #4ade80; border-radius:8px; padding:6px 12px; font-size:14px; color:#166534; font-weight:600;">
+                                            Exam Score: {{ $score }} / {{ $total }}
+                                        </div>
+                                        @endif
+                                    </td>
+                                </tr>
+                            </table>
+
+                            {{-- Login Credentials --}}
+                            @if(!empty($temporaryPassword))
+                            <p style="margin:0 0 8px; font-size:15px; font-weight:700; color:#0f172a;">Your Official Login Credentials</p>
+                            <p style="margin:0 0 10px; font-size:14px; line-height:1.6; color:#475569;">
+                                Below are your official student credentials. Use these to sign in to the Student Portal:
+                            </p>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin-bottom:18px;">
                                 <tr>
-                                    <td style="padding:10px 0; border-bottom:1px solid #e2e8f0; width:180px; color:#475569;"><strong>Username</strong></td>
-                                    <td style="padding:10px 0; border-bottom:1px solid #e2e8f0;"><span style="font-family:Consolas,monospace;">{{ $studentNumber }}</span></td>
+                                    <td style="padding:10px 0; border-bottom:1px solid #e2e8f0; width:180px; color:#475569;"><strong>Username / Student No.</strong></td>
+                                    <td style="padding:10px 0; border-bottom:1px solid #e2e8f0;"><span style="font-family:Consolas,monospace; font-weight:700;">{{ $studentNumber }}</span></td>
                                 </tr>
                                 <tr>
                                     <td style="padding:10px 0; border-bottom:1px solid #e2e8f0; color:#475569;"><strong>Temporary Password</strong></td>
-                                    <td style="padding:10px 0; border-bottom:1px solid #e2e8f0;"><span style="font-family:Consolas,monospace;">{{ $temporaryPassword }}</span></td>
+                                    <td style="padding:10px 0; border-bottom:1px solid #e2e8f0;"><span style="font-family:Consolas,monospace; font-weight:700;">{{ $temporaryPassword }}</span></td>
                                 </tr>
                             </table>
 
@@ -44,13 +63,26 @@
                                 </tr>
                             </table>
                             @else
-                            <p style="margin:0 0 14px; font-size:15px; line-height:1.7;">
-                                Your admission has been approved. Your existing account has been linked to this application. You can continue to sign in using your current credentials.
+                            <p style="margin:0 0 8px; font-size:15px; font-weight:700; color:#0f172a;">Your Account</p>
+                            <p style="margin:0 0 14px; font-size:14px; line-height:1.6; color:#475569;">
+                                Your existing account has been linked to this application. You can continue to sign in using your current credentials.
                             </p>
                             @if(!empty($studentNumber))
                             <p style="margin:0 0 14px; font-size:14px; color:#475569;"><strong>Student Number:</strong> <span style="font-family:Consolas,monospace;">{{ $studentNumber }}</span></p>
                             @endif
                             @endif
+
+                            {{-- Enrollment Reminder --}}
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
+                                <tr>
+                                    <td style="background:#fefce8; border:1px solid #fde047; border-radius:12px; padding:16px 18px;">
+                                        <p style="margin:0 0 6px; font-size:14px; font-weight:700; color:#854d0e;">📋 Important: Self-Enrollment Required</p>
+                                        <p style="margin:0; font-size:13px; line-height:1.65; color:#92400e;">
+                                            Please log in to the <strong>Student Portal</strong> using your official credentials above and complete your enrollment by yourself. Navigate to the <strong>Enrollment</strong> section to select your subjects and finalize your registration.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
 
                             <p style="margin:0; font-size:15px; line-height:1.7;">
                                 Regards,<br>
