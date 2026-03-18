@@ -44,6 +44,27 @@
                             </table>
                         </td>
                     </tr>
+                    @if(!empty($temporaryPassword))
+                    <tr>
+                        <td style="padding:0 24px 8px;">
+                            <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#0f172a;">Your Temporary Login Credentials</p>
+                            <p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#475569;">
+                                A temporary account has been created for you to access this exam. Please use the following credentials to sign in:
+                            </p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #dbeafe;border-radius:10px;background:#f0f7ff;margin-top:8px;">
+                                <tr>
+                                    <td style="padding:14px 16px;">
+                                        <p style="margin:0 0 6px;font-size:14px;color:#334155;"><strong>Email:</strong> {{ $fullName ? $fullName : 'your email address' }} (this email)</p>
+                                        <p style="margin:0;font-size:14px;color:#334155;"><strong>Temporary Password:</strong> <span style="font-family:monospace;background:#e0ecff;padding:2px 8px;border-radius:5px;color:#1e3a5f;font-weight:700;">{{ $temporaryPassword }}</span></p>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin:10px 0 0;font-size:13px;line-height:1.5;color:#94a3b8;">
+                                You will be asked to change your password on first login. Keep this email for your reference.
+                            </p>
+                        </td>
+                    </tr>
+                    @else
                     <tr>
                         <td style="padding:0 24px 8px;">
                             <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#0f172a;">Important</p>
@@ -52,6 +73,7 @@
                             </p>
                         </td>
                     </tr>
+                    @endif
                     <tr>
                         <td style="padding:18px 24px 24px;">
                             <a href="{{ $quizLink }}" style="display:inline-block;padding:12px 22px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;">

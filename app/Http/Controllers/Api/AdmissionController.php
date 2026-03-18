@@ -775,10 +775,42 @@ class AdmissionController extends Controller
             ], 422);
         }
 
-        if (User::query()->where('email', $application->email)->exists()) {
+        $existingUser = User::query()->where('email', $application->email)->first();
+        if ($existingUser) {
+            // Reuse the existing account (e.g. temporary account created during quiz invite)
+            DB::table('portal_user_roles')->updateOrInsert(
+                ['user_id' => $existingUser->id, 'role' => 'student'],
+                ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+
+            $application->update([
+                'status' => 'approved',
+                'approved_at' => now(),
+                'processed_by' => $request->user()->id,
+                'created_user_id' => $existingUser->id,
+            ]);
+
+            $mailWarning = null;
+            try {
+                Mail::to($application->email)->send(
+                    new AdmissionApprovedMail(
+                        fullName: $application->full_name,
+                        studentNumber: (string) ($existingUser->student_number ?? ''),
+                        temporaryPassword: null
+                    )
+                );
+            } catch (\Throwable $e) {
+                $mailWarning = 'Admission approved, but email sending failed. Check SMTP configuration.';
+            }
+
             return response()->json([
-                'message' => 'A user with this email already exists.',
-            ], 422);
+                'message' => 'Admission approved (existing account linked).',
+                'warning' => $mailWarning,
+                'credentials_preview' => [
+                    'student_number' => (string) ($existingUser->student_number ?? ''),
+                    'temporary_password' => null,
+                ],
+            ]);
         }
 
         $studentNumber = $this->generateStudentNumber();
@@ -1291,29 +1323,30 @@ class AdmissionController extends Controller
                 continue;
             }
 
-            if (! $isAdminSender) {
-                $studentUser = User::query()
-                    ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
-                    ->first();
+            // Auto-generate a temporary student account if none exists
+            $temporaryPassword = null;
+            $existingUser = User::query()
+                ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
+                ->first();
 
-                $hasStudentRole = $studentUser
-                    ? DB::table('portal_user_roles')
-                        ->where('user_id', $studentUser->id)
-                        ->where('role', 'student')
-                        ->where('is_active', 1)
-                        ->exists()
-                    : false;
+            if ($existingUser) {
+                // User already exists (admin, faculty, or student) — do NOT touch their roles.
+                // Just send the email; they already have credentials to log in.
+            } else {
+                // Create a temporary account so the applicant can take the quiz
+                $temporaryPassword = $this->generateTemporaryPassword();
+                $existingUser = User::query()->create([
+                    'name' => (string) ($application->full_name ?? 'Applicant'),
+                    'email' => Str::lower($email),
+                    'student_number' => $this->generateStudentNumber(),
+                    'password' => Hash::make($temporaryPassword),
+                    'must_change_password' => true,
+                ]);
 
-                if (! $hasStudentRole) {
-                    $failed += 1;
-                    $results[] = [
-                        'id' => (int) $application->id,
-                        'email' => $email,
-                        'sent' => false,
-                        'reason' => 'Student credentials are not active for this applicant.',
-                    ];
-                    continue;
-                }
+                DB::table('portal_user_roles')->updateOrInsert(
+                    ['user_id' => $existingUser->id, 'role' => 'student'],
+                    ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+                );
             }
 
             try {
@@ -1327,6 +1360,7 @@ class AdmissionController extends Controller
                         quizLink: (string) $validated['quiz_link'],
                         durationMinutes: (int) $validated['duration_minutes'],
                         expiresAt: $validated['expires_at'] ?? null,
+                        temporaryPassword: $temporaryPassword,
                     )
                 );
 

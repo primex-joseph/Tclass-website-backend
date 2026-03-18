@@ -16,7 +16,7 @@ class AdmissionApprovedMail extends Mailable
     public function __construct(
         public string $fullName,
         public string $studentNumber,
-        public string $temporaryPassword,
+        public ?string $temporaryPassword = null,
     ) {
     }
 

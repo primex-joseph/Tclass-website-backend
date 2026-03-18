@@ -22,6 +22,7 @@ class EntranceQuizInviteMail extends Mailable
         public string $quizLink,
         public int $durationMinutes,
         public ?string $expiresAt = null,
+        public ?string $temporaryPassword = null,
     ) {
     }
 
@@ -48,6 +49,7 @@ class EntranceQuizInviteMail extends Mailable
                 'quizLink' => $this->quizLink,
                 'durationMinutes' => $this->durationMinutes,
                 'expiresAt' => $this->expiresAt,
+                'temporaryPassword' => $this->temporaryPassword,
             ],
         );
     }

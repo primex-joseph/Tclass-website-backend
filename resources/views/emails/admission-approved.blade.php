@@ -20,6 +20,7 @@
                         <td style="padding:28px 24px 24px;">
                             <h2 style="margin:0 0 14px; font-size:22px; color:#0f172a;">Admission Approved</h2>
                             <p style="margin:0 0 12px; font-size:15px; line-height:1.7;">Hello {{ $fullName }},</p>
+                            @if(!empty($temporaryPassword))
                             <p style="margin:0 0 14px; font-size:15px; line-height:1.7;">
                                 Your admission has been approved. You can now sign in using the credentials below:
                             </p>
@@ -42,6 +43,14 @@
                                     </td>
                                 </tr>
                             </table>
+                            @else
+                            <p style="margin:0 0 14px; font-size:15px; line-height:1.7;">
+                                Your admission has been approved. Your existing account has been linked to this application. You can continue to sign in using your current credentials.
+                            </p>
+                            @if(!empty($studentNumber))
+                            <p style="margin:0 0 14px; font-size:14px; color:#475569;"><strong>Student Number:</strong> <span style="font-family:Consolas,monospace;">{{ $studentNumber }}</span></p>
+                            @endif
+                            @endif
 
                             <p style="margin:0; font-size:15px; line-height:1.7;">
                                 Regards,<br>
